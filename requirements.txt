@@ -1,17 +1,17 @@
 # FastAPI e dipendenze web
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
 
 # Gestione file Excel
-pandas==2.1.3
-openpyxl==3.1.2
+pandas==2.2.3
+openpyxl==3.1.5
 
 # Dipendenze per calcoli numerici
-numpy==1.25.2
+numpy==2.1.3
 
 # Validazione e serializzazione
-pydantic==2.5.0
+pydantic==2.10.3
 
 # CORS per il frontend (incluso in FastAPI)
 
@@ -19,4 +19,4 @@ pydantic==2.5.0
 # tempfile - modulo standard di Python
 
 # Dipendenze opzionali per sviluppo
-python-dotenv==1.0.0  # Per variabili d'ambiente
+python-dotenv==1.0.1  # Per variabili d'ambiente
