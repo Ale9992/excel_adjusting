@@ -1,0 +1,102 @@
+{
+  "name": "excel-adjuster",
+  "version": "1.0.0",
+  "description": "Excel Adjuster - Applicazione per correzione automatica di file Excel",
+  "main": "electron/main.js",
+  "homepage": "./",
+  "scripts": {
+    "electron": "electron .",
+    "electron-dev": "electron . --dev",
+    "build": "npm run build:win && npm run build:mac && npm run build:linux",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "dist": "npm run build",
+    "pack": "electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "excel",
+    "adjuster",
+    "correction",
+    "inventory",
+    "puff-store",
+    "desktop-app"
+  ],
+  "author": {
+    "name": "Alessio Baronti",
+    "email": "alessio.baronti@example.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.puffstore.excel-adjuster",
+    "productName": "Excel Adjuster",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "index.html",
+      "app.js",
+      "app.py",
+      "solver_semplice.py",
+      "requirements.txt",
+      "python-runtime/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "python-runtime",
+        "to": "python-runtime"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Excel Adjuster"
+    }
+  }
+}
