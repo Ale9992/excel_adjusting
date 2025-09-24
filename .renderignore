@@ -1,0 +1,51 @@
+# File di sviluppo e debug
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# File di configurazione locale
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# File di IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# File temporanei
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# File di test e debug
+test_*.py
+debug_*.py
+*_test.py
+*_debug.py
+
+# File Excel di test
+*_test.xlsx
+*_debug.xlsx
+esempio_*.xlsx
+test_*.xlsx
+
+# File di documentazione non necessari per il deploy
+DEPLOY.md
+DEPLOY_RENDER.md
+README.md
+
+# File di configurazione Vercel (non necessari per Render)
+vercel.json
+app_vercel.py

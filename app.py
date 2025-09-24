@@ -1,0 +1,261 @@
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+import tempfile
+import os
+import json
+from typing import Optional
+from solver_semplice import ExcelSolverSemplice as ExcelSolver
+
+app = FastAPI(title="Excel Adjuster", description="Applicazione per correzione automatica di file Excel")
+
+# Configurazione CORS per permettere richieste dal frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    return {"message": "Excel Adjuster API - Backend attivo"}
+
+@app.post("/introspect")
+async def introspect_excel(file: UploadFile = File(...)):
+    """
+    Analizza un file Excel e restituisce informazioni sui fogli e colonne disponibili
+    """
+    try:
+        # Verifica che sia un file Excel
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Il file deve essere un Excel (.xlsx o .xls)")
+        
+        # Salva temporaneamente il file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            content = await file.read()
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+        
+        try:
+            # Legge il file Excel
+            excel_file = pd.ExcelFile(tmp_file_path)
+            
+            # Estrae informazioni sui fogli
+            sheets_info = {}
+            for sheet_name in excel_file.sheet_names:
+                df = pd.read_excel(tmp_file_path, sheet_name=sheet_name)
+                
+                # Filtra solo le colonne numeriche e pulisce i dati
+                numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
+                
+                # Pulisce i dati per evitare valori inf/nan
+                clean_df = df.copy()
+                for col in numeric_columns:
+                    # Sostituisce inf e nan con 0
+                    clean_df[col] = clean_df[col].replace([float('inf'), float('-inf')], 0)
+                    clean_df[col] = clean_df[col].fillna(0)
+                
+                # Prepara i dati di esempio in modo sicuro
+                sample_data = []
+                if len(clean_df) > 0:
+                    sample_df = clean_df.head(3)
+                    for _, row in sample_df.iterrows():
+                        sample_row = {}
+                        for col in numeric_columns:
+                            value = row[col]
+                            # Converte in float sicuro per JSON
+                            if pd.isna(value) or value == float('inf') or value == float('-inf'):
+                                sample_row[col] = 0.0
+                            else:
+                                sample_row[col] = float(value)
+                        sample_data.append(sample_row)
+                
+                sheets_info[sheet_name] = {
+                    "columns": numeric_columns,
+                    "row_count": len(df),
+                    "sample_data": sample_data
+                }
+            
+            return {
+                "success": True,
+                "sheets": sheets_info,
+                "filename": file.filename
+            }
+            
+        finally:
+            # Pulisce il file temporaneo
+            os.unlink(tmp_file_path)
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore nell'analisi del file: {str(e)}")
+
+@app.post("/adjust")
+async def adjust_excel(
+    file: UploadFile = File(...),
+    sheet_name: str = Form(...),
+    quantity_column: str = Form(...),
+    price_column: str = Form(...),
+    remaining_column: str = Form(...),
+    target_total: float = Form(...),
+    data_rows: int = Form(...)
+):
+    """
+    Applica l'algoritmo di correzione al file Excel e restituisce il file modificato
+    """
+    try:
+        # Validazione input
+        if target_total <= 0:
+            raise HTTPException(status_code=400, detail="Il totale target deve essere maggiore di 0")
+        
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Il file deve essere un Excel (.xlsx o .xls)")
+        
+        # Salva temporaneamente il file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            content = await file.read()
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+        
+        try:
+            print(f"Creazione solver con parametri:")
+            print(f"  file_path: {tmp_file_path}")
+            print(f"  sheet_name: {sheet_name}")
+            print(f"  quantity_column: {quantity_column}")
+            print(f"  price_column: {price_column}")
+            print(f"  remaining_column: {remaining_column}")
+            print(f"  target_total: {target_total}")
+            print(f"  data_rows: {data_rows}")
+            
+            # Inizializza il solver con la nuova logica intelligente
+            solver = ExcelSolver(
+                file_path=tmp_file_path,
+                sheet_name=sheet_name,
+                quantity_column=quantity_column,
+                price_column=price_column,
+                remaining_column=remaining_column,
+                target_total=target_total,
+                data_rows=data_rows
+            )
+            
+            print("Solver creato con successo")
+            
+            # Esegue la correzione
+            result = solver.adjust()
+            
+            if not result["success"]:
+                raise HTTPException(status_code=400, detail=result["error"])
+            
+            # Crea il file di output
+            output_filename = f"adjusted_{file.filename}"
+            output_path = os.path.join(tempfile.gettempdir(), output_filename)
+            
+            # Salva il file modificato preservando le formule originali
+            from openpyxl import load_workbook
+            
+            # Carica il workbook originale
+            wb = load_workbook(tmp_file_path)
+            
+            # Lavora sul foglio specificato
+            if sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                
+                # Trova gli indici delle colonne
+                quantity_col_idx = None
+                price_col_idx = None
+                remaining_col_idx = None
+                
+                # Cerca le colonne nell'header (prima riga)
+                for col_idx, cell in enumerate(ws[1], 1):
+                    if cell.value == solver.quantity_column:
+                        quantity_col_idx = col_idx
+                    elif cell.value == solver.price_column:
+                        price_col_idx = col_idx
+                    elif cell.value == solver.remaining_column:
+                        remaining_col_idx = col_idx
+                
+                if quantity_col_idx and price_col_idx and remaining_col_idx:
+                    # Aggiorna le colonne Quantità, Prezzo e Rimanenze
+                    # Escludi la riga con la formula speciale se presente
+                    max_data_row = ws.max_row
+                    if hasattr(solver, 'special_formula_row') and solver.special_formula_row:
+                        max_data_row = solver.special_formula_row - 1  # Escludi la riga con formula speciale
+                        print(f"Esclusa riga {solver.special_formula_row} con formula speciale")
+                    
+                    # Aggiorna solo le righe che esistono nel DataFrame del solver
+                    for i in range(len(solver.df)):
+                        row_idx = i + 2  # Inizia dalla riga 2 (dopo l'header)
+                        if row_idx <= max_data_row:
+                            # Aggiorna quantità
+                            ws.cell(row=row_idx, column=quantity_col_idx, value=solver.df.iloc[i][solver.quantity_column])
+                            # Aggiorna prezzo
+                            ws.cell(row=row_idx, column=price_col_idx, value=solver.df.iloc[i][solver.price_column])
+                            # Aggiorna rimanenze (calcolate)
+                            ws.cell(row=row_idx, column=remaining_col_idx, value=solver.df.iloc[i][solver.remaining_column])
+                    
+                    # Aggiorna la formula speciale se presente
+                    if hasattr(solver, 'special_formula_row') and solver.special_formula_row:
+                        special_row = solver.special_formula_row
+                        # Aggiorna la formula speciale con il nuovo target
+                        new_formula = f'=SUMIF(J2:J{max_data_row},">0") * ({int(target_total)} / SUMIF(J2:J{max_data_row},">0"))'
+                        ws.cell(row=special_row, column=10, value=new_formula)
+                        print(f"Aggiornata formula speciale alla riga {special_row}: {new_formula}")
+            
+            # Forza il ricalcolo delle formule
+            wb.calculation.calcMode = 'auto'
+            wb.calculation.fullCalcOnLoad = True
+            
+            # Forza il ricalcolo di tutte le formule nel foglio
+            for sheet in wb.worksheets:
+                sheet.calculate_dimension()
+            
+            # Salva il workbook modificato
+            wb.save(output_path)
+            
+            # Salva le statistiche in un file temporaneo per il frontend
+            stats_filename = f"stats_{file.filename}.json"
+            stats_path = os.path.join(tempfile.gettempdir(), stats_filename)
+            
+            # Converte i tipi NumPy in tipi Python nativi per la serializzazione JSON
+            serializable_result = {
+                "success": result["success"],
+                "message": result["message"],
+                "original_total": float(result["original_total"]),
+                "final_total": float(result["final_total"]),
+                "target_total": float(result["target_total"])
+            }
+            
+            with open(stats_path, 'w') as f:
+                import json
+                json.dump(serializable_result, f)
+            
+            # Aggiunge le statistiche agli header della risposta
+            headers = {
+                'X-Original-Total': str(result.get('original_total', 0)),
+                'X-Target-Total': str(result.get('target_total', 0)),
+                'X-Final-Total': str(result.get('final_total', 0)),
+                'X-Difference': str(result.get('difference', 0)),
+                'X-Rows-Processed': str(result.get('rows_processed', 0))
+            }
+            
+            return FileResponse(
+                path=output_path,
+                filename=output_filename,
+                media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                headers=headers
+            )
+            
+        finally:
+            # Pulisce il file temporaneo di input
+            os.unlink(tmp_file_path)
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore nella correzione del file: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
