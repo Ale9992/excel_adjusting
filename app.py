@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import tempfile
@@ -19,9 +20,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
+    """Serve la pagina principale dell'applicazione"""
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), status_code=200)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>File index.html non trovato</h1>", status_code=404)
+
+@app.get("/api/status")
+async def api_status():
+    """Endpoint per verificare lo stato dell'API"""
     return {"message": "Excel Adjuster API - Backend attivo"}
+
+@app.get("/app.js")
+async def serve_js():
+    """Serve il file JavaScript"""
+    try:
+        with open("app.js", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), status_code=200, media_type="application/javascript")
+    except FileNotFoundError:
+        return HTMLResponse(content="// File app.js non trovato", status_code=404)
 
 @app.post("/introspect")
 async def introspect_excel(file: UploadFile = File(...)):
