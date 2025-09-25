@@ -1,6 +1,6 @@
 # Excel Adjuster - Correzione Automatica File Excel
 
-Un'applicazione completa per la correzione automatica di file Excel con algoritmo intelligente che modifica quantità e prezzi per raggiungere un totale target specifico.
+Un'applicazione web completa per la correzione automatica di file Excel con algoritmo intelligente che modifica quantità e prezzi per raggiungere un totale target specifico.
 
 ## 🚀 Caratteristiche
 
@@ -46,7 +46,9 @@ pip install -r requirements.txt
 
 ## 🚀 Avvio dell'Applicazione
 
-### 1. Avvia il Backend FastAPI
+### Opzione 1: Esecuzione Locale
+
+#### 1. Avvia il Backend FastAPI
 ```bash
 # Metodo 1: Comando diretto
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
@@ -57,13 +59,23 @@ python app.py
 
 Il backend sarà disponibile su: `http://localhost:8000`
 
-### 2. Apri il Frontend
+#### 2. Apri il Frontend
 Apri il file `index.html` nel tuo browser preferito:
 - **Chrome/Edge**: Doppio click su `index.html`
 - **Firefox**: Doppio click su `index.html`
 - **Safari**: Doppio click su `index.html`
 
 Oppure apri direttamente: `file:///percorso/completo/a/PuffStore-tool/index.html`
+
+### Opzione 2: Deploy su Render (Raccomandato)
+
+Per rendere l'applicazione accessibile online, segui la guida completa in [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+
+**Passaggi rapidi:**
+1. Pusha il codice su GitHub
+2. Connetti il repository a Render
+3. Deploy automatico con il file `render.yaml`
+4. L'app sarà disponibile su `https://excel-adjuster.onrender.com`
 
 ## 📖 Come Usare l'Applicazione
 
