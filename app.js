@@ -1,5 +1,12 @@
 // Configurazione API
-const API_BASE_URL = 'http://localhost:8000';
+// Rileva automaticamente se siamo in produzione o sviluppo
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+    ? 'http://localhost:8000' 
+    : window.location.origin;
+
+// Debug: log dell'URL API utilizzato
+console.log('API Base URL:', API_BASE_URL);
+console.log('Current hostname:', window.location.hostname);
 
 // Elementi DOM
 const elements = {
@@ -40,7 +47,24 @@ let appState = {
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
     hideAllSections();
+    testAPIConnection();
 });
+
+// Testa la connessione all'API all'avvio
+async function testAPIConnection() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/status`);
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Connessione API OK:', data);
+        } else {
+            console.warn('⚠️ API non raggiungibile:', response.status);
+        }
+    } catch (error) {
+        console.error('❌ Errore connessione API:', error);
+        showMessage('error', 'Attenzione: Il server non è raggiungibile. Verifica la connessione.');
+    }
+}
 
 function initializeEventListeners() {
     // File input change
@@ -247,8 +271,8 @@ async function processFile(file) {
         console.error('Errore nell\'analisi del file:', error);
         let errorMessage = 'Errore nell\'analisi del file';
         
-        if (error.message.includes('Load failed')) {
-            errorMessage = 'Impossibile caricare il file. Verifica che sia un file Excel valido (.xlsx o .xls)';
+        if (error.message.includes('Load failed') || error.message.includes('fetch')) {
+            errorMessage = 'Errore di connessione. Verifica che il server sia attivo e raggiungibile.';
         } else if (error.message.includes('JSON')) {
             errorMessage = 'Il file contiene dati non validi. Verifica che le colonne numeriche non contengano valori infiniti o non numerici';
         } else if (error.message.includes('network') || error.message.includes('fetch')) {

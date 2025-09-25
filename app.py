@@ -20,6 +20,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve file statici (CSS, JS, immagini)
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve la pagina principale dell'applicazione"""
@@ -29,10 +32,24 @@ async def root():
     except FileNotFoundError:
         return HTMLResponse(content="<h1>File index.html non trovato</h1>", status_code=404)
 
+@app.get("/app.js")
+async def serve_js():
+    """Serve il file JavaScript dell'applicazione"""
+    try:
+        with open("app.js", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), media_type="application/javascript")
+    except FileNotFoundError:
+        return HTMLResponse(content="// File app.js non trovato", status_code=404)
+
 @app.get("/api/status")
 async def api_status():
     """Endpoint per verificare lo stato dell'API"""
-    return {"message": "Excel Adjuster API - Backend attivo"}
+    return {
+        "message": "Excel Adjuster API - Backend attivo",
+        "status": "running",
+        "version": "1.0.0",
+        "environment": "production" if os.getenv("RENDER") else "development"
+    }
 
 @app.get("/app.js")
 async def serve_js():
