@@ -45,10 +45,10 @@ class ExcelSolverSemplice:
     
     def adjust(self) -> Dict[str, Any]:
         """
-        Algoritmo semplice: Riduci drasticamente le quantità negative e imposta prezzo fisso per i positivi
+        Algoritmo che modifica SOLO le quantità, lasciando i prezzi invariati
         """
         try:
-            print("=== ALGORITMO SEMPLICE ===")
+            print("=== ALGORITMO QUANTITÀ-ONLY ===")
             print(f"Target: {self.target_total}€")
             print(f"Righe processate: {len(self.df)}")
             
@@ -66,18 +66,18 @@ class ExcelSolverSemplice:
             print(f"Righe positive: {positive_count}")
             print(f"Righe negative: {negative_count}")
             
-            # STRATEGIA SEMPLICE:
+            # STRATEGIA QUANTITÀ-ONLY:
             # 1. Riduci drasticamente le quantità negative (del 99%)
-            # 2. Imposta quantità fissa di 1 per tutti i positivi
-            # 3. Calcola il prezzo fisso per raggiungere esattamente il target
+            # 2. Calcola un fattore moltiplicativo per le quantità positive
+            # 3. I PREZZI RIMANGONO INVARIATI
+            
+            # Salva i prezzi originali (per riferimento)
+            original_prices = self.df[self.price_column].copy()
             
             # Riduci le quantità negative del 99%
             if negative_count > 0:
                 self.df.loc[negative_mask, self.quantity_column] = self.df.loc[negative_mask, self.quantity_column] * 0.01
-            
-            # Imposta quantità fissa di 1 per tutti i positivi
-            if positive_count > 0:
-                self.df.loc[positive_mask, self.quantity_column] = 1
+                print(f"Quantità negative ridotte del 99%")
             
             # Calcola il totale negativo rimanente
             negative_total = (self.df.loc[negative_mask, self.quantity_column] * self.df.loc[negative_mask, self.price_column]).sum()
@@ -87,20 +87,33 @@ class ExcelSolverSemplice:
             needed_from_positives = self.target_total - negative_total
             print(f"Totale necessario dai positivi: {needed_from_positives:.2f}€")
             
-            # Calcola il prezzo fisso per i positivi
+            # Calcola il fattore moltiplicativo per le quantità positive
             if positive_count > 0:
-                fixed_price = needed_from_positives / positive_count
-                print(f"Prezzo fisso per positivi: €{fixed_price:.2f}")
+                # Calcola il totale attuale dei positivi (con quantità originali)
+                current_positive_total = (self.df.loc[positive_mask, self.quantity_column] * self.df.loc[positive_mask, self.price_column]).sum()
+                print(f"Totale attuale positivi: {current_positive_total:.2f}€")
                 
-                # Imposta il prezzo fisso per tutti i positivi
-                self.df.loc[positive_mask, self.price_column] = fixed_price
+                # Calcola il fattore moltiplicativo
+                if current_positive_total > 0:
+                    multiplier = needed_from_positives / current_positive_total
+                    print(f"Fattore moltiplicativo: {multiplier:.4f}")
+                    
+                    # Applica il fattore alle quantità positive
+                    self.df.loc[positive_mask, self.quantity_column] = self.df.loc[positive_mask, self.quantity_column] * multiplier
+                    print(f"Quantità positive moltiplicate per {multiplier:.4f}")
+                else:
+                    print("⚠️ Totale positivi è 0, impossibile calcolare il fattore")
             
-            # Calcola le nuove rimanenze
+            # Calcola le nuove rimanenze (quantità modificate × prezzi originali)
             self.df[self.remaining_column] = self.df[self.quantity_column] * self.df[self.price_column]
             
             # Calcola il totale finale
             final_total = self.df[self.remaining_column].sum()
             print(f"Totale finale: {final_total:.2f}€")
+            
+            # Verifica che i prezzi siano rimasti invariati
+            prices_unchanged = (self.df[self.price_column] == original_prices).all()
+            print(f"Prezzi invariati: {prices_unchanged}")
             
             # Verifica la precisione
             diff = abs(final_total - self.target_total)
@@ -109,11 +122,12 @@ class ExcelSolverSemplice:
             
             return {
                 "success": True,
-                "message": "Correzione applicata con successo",
+                "message": "Correzione applicata con successo (solo quantità modificate)",
                 "original_total": current_total,
                 "final_total": final_total,
                 "target_total": self.target_total,
-                "precision": precision
+                "precision": precision,
+                "prices_unchanged": prices_unchanged
             }
             
         except Exception as e:

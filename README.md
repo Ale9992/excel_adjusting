@@ -148,18 +148,19 @@ Applica l'algoritmo di correzione al file Excel.
 
 ## 🧮 Algoritmo di Correzione
 
-L'algoritmo implementa una strategia a più fasi:
+L'algoritmo implementa una strategia che modifica **SOLO le quantità**, lasciando i prezzi invariati:
 
-1. **Variazione Casuale**: Applica variazioni casuali a quantità e prezzi entro i limiti specificati
-2. **Correzione Fattore**: Calcola un fattore moltiplicativo per raggiungere il totale target
-3. **Regolazione Fine**: Corregge l'ultima riga per eliminare residui di arrotondamento
-4. **Vincoli di Sicurezza**: Garantisce che quantità ≥ 0 e prezzi ≥ 0.01
+1. **Riduzione Quantità Negative**: Riduce le quantità negative del 99% per minimizzare l'impatto negativo
+2. **Fattore Moltiplicativo**: Calcola un fattore moltiplicativo per le quantità positive per raggiungere il totale target
+3. **Prezzi Invariati**: I prezzi originali rimangono completamente invariati
+4. **Precisione Perfetta**: Raggiunge sempre il totale target esatto
 
 ### Caratteristiche dell'Algoritmo:
-- ✅ **Nessun valore negativo**: Quantità e prezzi non possono diventare negativi
-- ✅ **Precisione**: Corregge automaticamente i residui di arrotondamento
-- ✅ **Riproducibilità**: Seed casuale per risultati consistenti
-- ✅ **Flessibilità**: Variazioni personalizzabili per quantità e prezzi
+- ✅ **Prezzi invariati**: I prezzi originali non vengono mai modificati
+- ✅ **Precisione perfetta**: Raggiunge sempre il totale target esatto
+- ✅ **Realistico**: Mantiene la struttura originale dei prezzi
+- ✅ **Gestione negativi**: Riduce l'impatto delle quantità negative
+- ✅ **Proporzionale**: Le quantità positive vengono modificate proporzionalmente
 
 ## 🐛 Risoluzione Problemi
 
