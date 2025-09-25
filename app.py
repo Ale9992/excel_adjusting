@@ -9,6 +9,80 @@ import json
 from typing import Optional
 from solver_semplice import ExcelSolverSemplice as ExcelSolver
 
+def analyze_column_patterns(df, numeric_columns):
+    """
+    Analizza i pattern delle colonne numeriche per identificare automaticamente
+    quantità, prezzi e rimanenze basandosi sui valori tipici
+    """
+    column_analysis = {}
+    
+    for col in numeric_columns:
+        # Estrai i valori non nulli
+        values = df[col].dropna()
+        if len(values) == 0:
+            continue
+            
+        # Calcola statistiche
+        mean_val = values.mean()
+        median_val = values.median()
+        std_val = values.std()
+        min_val = values.min()
+        max_val = values.max()
+        
+        # Conta valori interi vs decimali
+        integer_count = sum(1 for v in values if isinstance(v, (int, float)) and v == int(v))
+        decimal_count = len(values) - integer_count
+        
+        # Analizza i pattern
+        analysis = {
+            'column': col,
+            'mean': float(mean_val) if not pd.isna(mean_val) else 0,
+            'median': float(median_val) if not pd.isna(median_val) else 0,
+            'std': float(std_val) if not pd.isna(std_val) else 0,
+            'min': float(min_val) if not pd.isna(min_val) else 0,
+            'max': float(max_val) if not pd.isna(max_val) else 0,
+            'integer_ratio': integer_count / len(values) if len(values) > 0 else 0,
+            'decimal_ratio': decimal_count / len(values) if len(values) > 0 else 0,
+            'likely_type': 'unknown'
+        }
+        
+        # Euristiche per identificare il tipo di colonna
+        
+        # QUANTITÀ: valori interi, range tipico 1-1000, bassa varianza
+        if (analysis['integer_ratio'] > 0.8 and 
+            analysis['mean'] > 0 and analysis['mean'] < 1000 and
+            analysis['std'] < analysis['mean'] * 0.5):
+            analysis['likely_type'] = 'quantity'
+            analysis['confidence'] = 0.8
+        
+        # PREZZI: valori decimali, range tipico 0.01-1000, alta varianza
+        elif (analysis['decimal_ratio'] > 0.4 and 
+              analysis['mean'] > 0.01 and analysis['mean'] < 10000 and
+              analysis['std'] > analysis['mean'] * 0.2):
+            analysis['likely_type'] = 'price'
+            analysis['confidence'] = 0.7
+        
+        # RIMANENZE/TOTALI: valori decimali, range ampio, alta varianza
+        elif (analysis['mean'] > 10 and 
+              analysis['std'] > analysis['mean'] * 0.4 and
+              analysis['max'] > analysis['mean'] * 2):
+            analysis['likely_type'] = 'remaining'
+            analysis['confidence'] = 0.6
+        
+        # VALORI PICCOLI: potrebbero essere quantità
+        elif (analysis['mean'] < 100 and analysis['integer_ratio'] > 0.6):
+            analysis['likely_type'] = 'quantity'
+            analysis['confidence'] = 0.5
+        
+        # VALORI GRANDI: potrebbero essere totali
+        elif (analysis['mean'] > 100):
+            analysis['likely_type'] = 'remaining'
+            analysis['confidence'] = 0.5
+        
+        column_analysis[col] = analysis
+    
+    return column_analysis
+
 app = FastAPI(title="Excel Adjuster", description="Applicazione per correzione automatica di file Excel")
 
 # Configurazione CORS per permettere richieste dal frontend
@@ -96,6 +170,9 @@ async def introspect_excel(file: UploadFile = File(...)):
                     clean_df[col] = clean_df[col].replace([float('inf'), float('-inf')], 0)
                     clean_df[col] = clean_df[col].fillna(0)
                 
+                # Analizza i pattern delle colonne per identificazione automatica
+                column_analysis = analyze_column_patterns(clean_df, numeric_columns)
+                
                 # Prepara i dati di esempio in modo sicuro
                 sample_data = []
                 if len(clean_df) > 0:
@@ -111,10 +188,32 @@ async def introspect_excel(file: UploadFile = File(...)):
                                 sample_row[col] = float(value)
                         sample_data.append(sample_row)
                 
+                # Identifica automaticamente le colonne più probabili
+                suggested_columns = {
+                    "quantity": None,
+                    "price": None,
+                    "remaining": None
+                }
+                
+                # Trova le colonne con la confidenza più alta per ogni tipo
+                for col, analysis in column_analysis.items():
+                    col_type = analysis.get('likely_type', 'unknown')
+                    confidence = analysis.get('confidence', 0)
+                    
+                    if col_type in suggested_columns:
+                        current_confidence = 0
+                        if suggested_columns[col_type]:
+                            current_confidence = column_analysis[suggested_columns[col_type]].get('confidence', 0)
+                        
+                        if confidence > current_confidence:
+                            suggested_columns[col_type] = col
+                
                 sheets_info[sheet_name] = {
                     "columns": numeric_columns,
                     "row_count": len(df),
-                    "sample_data": sample_data
+                    "sample_data": sample_data,
+                    "column_analysis": column_analysis,
+                    "suggested_columns": suggested_columns
                 }
             
             return {

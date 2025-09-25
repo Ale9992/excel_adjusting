@@ -33,7 +33,8 @@ const elements = {
     errorCard: document.getElementById('errorCard'),
     errorMessage: document.getElementById('errorMessage'),
     loadingOverlay: document.getElementById('loadingOverlay'),
-    loadingMessage: document.getElementById('loadingMessage')
+    loadingMessage: document.getElementById('loadingMessage'),
+    columnAnalysisInfo: document.getElementById('columnAnalysisInfo')
 };
 
 // Stato dell'applicazione
@@ -308,30 +309,62 @@ function handleSheetSelect(event) {
     const sheetName = event.target.value;
     if (sheetName && appState.sheetData) {
         const sheet = appState.sheetData[sheetName];
-        populateColumnSelects(sheet.columns);
+        const suggestedColumns = sheet.suggested_columns || null;
+        populateColumnSelects(sheet.columns, suggestedColumns);
         elements.columnSection.classList.remove('hidden');
-        showMessage('status', `Foglio "${sheetName}" selezionato. ${sheet.columns.length} colonne numeriche disponibili. Colonne auto-selezionate se trovate corrispondenze.`);
+        
+        let statusMessage = `Foglio "${sheetName}" selezionato. ${sheet.columns.length} colonne numeriche disponibili.`;
+        if (suggestedColumns && (suggestedColumns.quantity || suggestedColumns.price || suggestedColumns.remaining)) {
+            statusMessage += ' Colonne suggerite automaticamente basate sui pattern dei dati.';
+            elements.columnAnalysisInfo.classList.remove('hidden');
+        } else {
+            statusMessage += ' Colonne auto-selezionate se trovate corrispondenze nei nomi.';
+            elements.columnAnalysisInfo.classList.add('hidden');
+        }
+        showMessage('status', statusMessage);
     } else {
         elements.columnSection.classList.add('hidden');
         elements.targetSection.classList.add('hidden');
     }
 }
 
-function populateColumnSelects(columns) {
-    const columnSelects = [elements.quantityColumn, elements.priceColumn, elements.remainingColumn];
+function populateColumnSelects(columns, suggestedColumns = null) {
+    const columnSelects = [
+        { select: elements.quantityColumn, type: 'quantity' },
+        { select: elements.priceColumn, type: 'price' },
+        { select: elements.remainingColumn, type: 'remaining' }
+    ];
     
-    columnSelects.forEach(select => {
+    columnSelects.forEach(({ select, type }) => {
         select.innerHTML = '<option value="">Seleziona colonna...</option>';
+        
+        // Aggiungi le colonne con indicazione se sono suggerite
         columns.forEach(column => {
             const option = document.createElement('option');
             option.value = column;
-            option.textContent = column;
+            
+            // Controlla se questa colonna è suggerita per questo tipo
+            if (suggestedColumns && suggestedColumns[type] === column) {
+                option.textContent = `${column} (suggerita)`;
+                option.style.fontWeight = 'bold';
+                option.style.color = '#059669'; // Verde
+            } else {
+                option.textContent = column;
+            }
+            
             select.appendChild(option);
         });
+        
+        // Auto-seleziona la colonna suggerita se disponibile
+        if (suggestedColumns && suggestedColumns[type]) {
+            select.value = suggestedColumns[type];
+        }
     });
     
-    // Auto-seleziona le colonne se possibile
-    autoSelectColumns(columns);
+    // Se non ci sono colonne suggerite, usa l'auto-selezione basata sui nomi
+    if (!suggestedColumns || (!suggestedColumns.quantity && !suggestedColumns.price && !suggestedColumns.remaining)) {
+        autoSelectColumns(columns);
+    }
 }
 
 function autoSelectColumns(columns) {
