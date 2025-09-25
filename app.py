@@ -83,6 +83,16 @@ def analyze_column_patterns(df, numeric_columns):
     
     return column_analysis
 
+def _get_excel_column_letter(index):
+    """
+    Converte un indice numerico in lettera di colonna Excel (0=A, 1=B, 25=Z, 26=AA, etc.)
+    """
+    result = ""
+    while index >= 0:
+        result = chr(index % 26 + ord('A')) + result
+        index = index // 26 - 1
+    return result
+
 app = FastAPI(title="Excel Adjuster", description="Applicazione per correzione automatica di file Excel")
 
 # Configurazione CORS per permettere richieste dal frontend
@@ -208,12 +218,19 @@ async def introspect_excel(file: UploadFile = File(...)):
                         if confidence > current_confidence:
                             suggested_columns[col_type] = col
                 
+                # Crea mapping colonne Excel (A, B, C, D...)
+                excel_column_mapping = {}
+                for i, col in enumerate(numeric_columns):
+                    excel_letter = _get_excel_column_letter(i)
+                    excel_column_mapping[excel_letter] = col
+                
                 sheets_info[sheet_name] = {
                     "columns": numeric_columns,
                     "row_count": len(df),
                     "sample_data": sample_data,
                     "column_analysis": column_analysis,
-                    "suggested_columns": suggested_columns
+                    "suggested_columns": suggested_columns,
+                    "excel_column_mapping": excel_column_mapping
                 }
             
             return {

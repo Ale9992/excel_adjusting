@@ -310,7 +310,8 @@ function handleSheetSelect(event) {
     if (sheetName && appState.sheetData) {
         const sheet = appState.sheetData[sheetName];
         const suggestedColumns = sheet.suggested_columns || null;
-        populateColumnSelects(sheet.columns, suggestedColumns);
+        const excelMapping = sheet.excel_column_mapping || null;
+        populateColumnSelects(sheet.columns, suggestedColumns, excelMapping);
         elements.columnSection.classList.remove('hidden');
         
         let statusMessage = `Foglio "${sheetName}" selezionato. ${sheet.columns.length} colonne numeriche disponibili.`;
@@ -318,7 +319,7 @@ function handleSheetSelect(event) {
             statusMessage += ' Colonne suggerite automaticamente basate sui pattern dei dati.';
             elements.columnAnalysisInfo.classList.remove('hidden');
         } else {
-            statusMessage += ' Colonne auto-selezionate se trovate corrispondenze nei nomi.';
+            statusMessage += ' Seleziona le colonne usando le lettere Excel (A, B, C...).';
             elements.columnAnalysisInfo.classList.add('hidden');
         }
         showMessage('status', statusMessage);
@@ -328,7 +329,7 @@ function handleSheetSelect(event) {
     }
 }
 
-function populateColumnSelects(columns, suggestedColumns = null) {
+function populateColumnSelects(columns, suggestedColumns = null, excelMapping = null) {
     const columnSelects = [
         { select: elements.quantityColumn, type: 'quantity' },
         { select: elements.priceColumn, type: 'price' },
@@ -338,18 +339,28 @@ function populateColumnSelects(columns, suggestedColumns = null) {
     columnSelects.forEach(({ select, type }) => {
         select.innerHTML = '<option value="">Seleziona colonna...</option>';
         
-        // Aggiungi le colonne con indicazione se sono suggerite
-        columns.forEach(column => {
+        // Aggiungi le colonne con lettere Excel se disponibili
+        columns.forEach((column, index) => {
             const option = document.createElement('option');
             option.value = column;
             
+            // Usa la lettera Excel se disponibile, altrimenti usa il nome della colonna
+            let displayText = column;
+            if (excelMapping) {
+                // Trova la lettera Excel per questa colonna
+                const excelLetter = Object.keys(excelMapping).find(letter => excelMapping[letter] === column);
+                if (excelLetter) {
+                    displayText = `Colonna ${excelLetter} (${column})`;
+                }
+            }
+            
             // Controlla se questa colonna è suggerita per questo tipo
             if (suggestedColumns && suggestedColumns[type] === column) {
-                option.textContent = `${column} (suggerita)`;
+                option.textContent = `${displayText} (suggerita)`;
                 option.style.fontWeight = 'bold';
                 option.style.color = '#059669'; // Verde
             } else {
-                option.textContent = column;
+                option.textContent = displayText;
             }
             
             select.appendChild(option);

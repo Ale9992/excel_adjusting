@@ -94,6 +94,8 @@ Per rendere l'applicazione accessibile online, segui la guida completa in [DEPLO
 - **Colonna Prezzo**: Seleziona la colonna con i prezzi
 - **Colonna Rimanenze**: Seleziona la colonna che calcola Quantità × Prezzo
 
+**Nota**: Le colonne sono mostrate con la nomenclatura Excel (A, B, C, D...) per facilità di selezione. Se l'identificazione automatica non funziona, puoi selezionare manualmente usando le lettere delle colonne.
+
 ### 4. Imposta il Totale Target
 - Inserisci il valore totale che vuoi raggiungere
 - Il sistema modificherà i valori per raggiungere questo totale
@@ -123,7 +125,14 @@ Analizza un file Excel e restituisce informazioni sui fogli e colonne.
     "Foglio1": {
       "columns": ["Quantità", "Prezzo", "Totale"],
       "row_count": 100,
-      "sample_data": [...]
+      "sample_data": [...],
+      "column_analysis": {...},
+      "suggested_columns": {...},
+      "excel_column_mapping": {
+        "A": "Quantità",
+        "B": "Prezzo", 
+        "C": "Totale"
+      }
     }
   },
   "filename": "esempio.xlsx"
