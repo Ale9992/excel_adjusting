@@ -83,6 +83,7 @@ Per rendere l'applicazione accessibile online, segui la guida completa in [DEPLO
 - Trascina un file `.xlsx` o `.xls` nell'area di upload
 - Oppure clicca "Carica un file" e seleziona il file
 - Il sistema analizzerà automaticamente il file
+- **Nota**: I file `.xls` vengono automaticamente convertiti in `.xlsx` per l'elaborazione
 
 ### 2. Seleziona il Foglio di Lavoro
 - Scegli il foglio di lavoro dal menu a tendina
@@ -112,7 +113,7 @@ Per rendere l'applicazione accessibile online, segui la guida completa in [DEPLO
 Analizza un file Excel e restituisce informazioni sui fogli e colonne.
 
 **Parametri:**
-- `file`: File Excel (.xlsx o .xls)
+- `file`: File Excel (.xlsx o .xls) - I file .xls vengono convertiti automaticamente in .xlsx
 
 **Risposta:**
 ```json
@@ -133,7 +134,7 @@ Analizza un file Excel e restituisce informazioni sui fogli e colonne.
 Applica l'algoritmo di correzione al file Excel.
 
 **Parametri:**
-- `file`: File Excel
+- `file`: File Excel (.xlsx o .xls) - I file .xls vengono convertiti automaticamente in .xlsx
 - `sheet_name`: Nome del foglio di lavoro
 - `quantity_column`: Nome colonna quantità
 - `price_column`: Nome colonna prezzo
@@ -143,7 +144,7 @@ Applica l'algoritmo di correzione al file Excel.
 - `price_variation`: Variazione prezzo (default: 0.20)
 - `random_seed`: Seed casuale (opzionale)
 
-**Risposta:** File Excel modificato per download
+**Risposta:** File Excel modificato per download (sempre in formato .xlsx)
 
 ## 🧮 Algoritmo di Correzione
 

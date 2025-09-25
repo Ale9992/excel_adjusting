@@ -70,8 +70,9 @@ async def introspect_excel(file: UploadFile = File(...)):
         if not file.filename.endswith(('.xlsx', '.xls')):
             raise HTTPException(status_code=400, detail="Il file deve essere un Excel (.xlsx o .xls)")
         
-        # Salva temporaneamente il file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+        # Salva temporaneamente il file con l'estensione corretta
+        file_extension = '.xlsx' if file.filename.endswith('.xlsx') else '.xls'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
             content = await file.read()
             tmp_file.write(content)
             tmp_file_path = tmp_file.name
@@ -150,8 +151,9 @@ async def adjust_excel(
         if not file.filename.endswith(('.xlsx', '.xls')):
             raise HTTPException(status_code=400, detail="Il file deve essere un Excel (.xlsx o .xls)")
         
-        # Salva temporaneamente il file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+        # Salva temporaneamente il file con l'estensione corretta
+        file_extension = '.xlsx' if file.filename.endswith('.xlsx') else '.xls'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
             content = await file.read()
             tmp_file.write(content)
             tmp_file_path = tmp_file.name
@@ -186,14 +188,32 @@ async def adjust_excel(
                 raise HTTPException(status_code=400, detail=result["error"])
             
             # Crea il file di output
-            output_filename = f"adjusted_{file.filename}"
+            # Se il file originale era .xls, salva come .xlsx (conversione automatica)
+            if file_extension == '.xls':
+                output_filename = f"adjusted_{file.filename.replace('.xls', '.xlsx')}"
+            else:
+                output_filename = f"adjusted_{file.filename}"
             output_path = os.path.join(tempfile.gettempdir(), output_filename)
             
             # Salva il file modificato preservando le formule originali
             from openpyxl import load_workbook
+            import pandas as pd
             
-            # Carica il workbook originale
-            wb = load_workbook(tmp_file_path)
+            # Se il file è .xls, convertilo in .xlsx per l'elaborazione
+            if file_extension == '.xls':
+                # Leggi con pandas (supporta .xls) e salva come .xlsx
+                xlsx_path = tmp_file_path.replace('.xls', '.xlsx')
+                df_dict = pd.read_excel(tmp_file_path, sheet_name=None, engine='xlrd')
+                
+                with pd.ExcelWriter(xlsx_path, engine='openpyxl') as writer:
+                    for sheet_name_df, df in df_dict.items():
+                        df.to_excel(writer, sheet_name=sheet_name_df, index=False)
+                
+                # Usa il file convertito per l'elaborazione
+                wb = load_workbook(xlsx_path)
+            else:
+                # File .xlsx, carica direttamente
+                wb = load_workbook(tmp_file_path)
             
             # Lavora sul foglio specificato
             if sheet_name in wb.sheetnames:

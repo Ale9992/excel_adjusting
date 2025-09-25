@@ -6,6 +6,7 @@ python-multipart==0.0.20
 # Gestione file Excel
 pandas==2.2.3
 openpyxl==3.1.5
+xlrd==2.0.1  # Per supportare file .xls (Excel 97-2003)
 
 # Dipendenze per calcoli numerici
 numpy==2.1.3

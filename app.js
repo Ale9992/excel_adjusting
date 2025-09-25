@@ -265,7 +265,12 @@ async function processFile(file) {
         populateSheetSelect(data.sheets);
         elements.sheetSection.classList.remove('hidden');
         
-        showMessage('status', `File analizzato con successo. Trovati ${Object.keys(data.sheets).length} fogli di lavoro.`);
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        let statusMessage = `File analizzato con successo. Trovati ${Object.keys(data.sheets).length} fogli di lavoro.`;
+        if (fileExtension === 'xls') {
+            statusMessage += ' (File .xls convertito automaticamente in .xlsx)';
+        }
+        showMessage('status', statusMessage);
         
     } catch (error) {
         console.error('Errore nell\'analisi del file:', error);
