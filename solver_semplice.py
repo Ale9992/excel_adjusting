@@ -209,42 +209,27 @@ class ExcelSolverSemplice:
     
     def _apply_zero_one_strategy(self, target_total):
         """
-        Strategia 0/1 per file grandi: imposta le quantità a 0 o 1 per raggiungere il target
+        Strategia 0/1 intelligente per file grandi: analizza i prezzi per trovare la combinazione ottimale
         """
-        print("Applicando strategia 0/1 per raggiungere il target...")
+        print("Applicando strategia 0/1 intelligente per raggiungere il target...")
         
-        # Ordina le righe per impatto (prezzo * quantità originale)
-        original_quantities = self.df[self.quantity_column].copy()
-        impact = original_quantities * self.df[self.price_column]
-        sorted_indices = impact.argsort()[::-1]  # Ordina per impatto decrescente
+        # Analizza la distribuzione dei prezzi
+        prices = self.df[self.price_column].values
+        print(f"Analisi prezzi:")
+        print(f"  Prezzo minimo: {prices.min():.2f}€")
+        print(f"  Prezzo massimo: {prices.max():.2f}€")
+        print(f"  Prezzo medio: {prices.mean():.2f}€")
+        print(f"  Prezzo mediano: {np.median(prices):.2f}€")
         
         # Inizializza tutte le quantità a 0
         self.df[self.quantity_column] = 0
         
-        # Calcola il totale attuale (dovrebbe essere 0)
-        current_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
-        remaining_target = target_total - current_total
+        # Strategia intelligente: trova la combinazione ottimale
+        best_combination = self._find_optimal_combination(prices, target_total)
         
-        print(f"Target da raggiungere: {target_total:.2f}€")
-        print(f"Totale attuale: {current_total:.2f}€")
-        print(f"Rimanente: {remaining_target:.2f}€")
-        
-        # Aggiungi quantità 1 alle righe con maggiore impatto fino a raggiungere il target
-        for i, idx in enumerate(sorted_indices):
-            if remaining_target <= 0:
-                break
-                
-            # Imposta la quantità a 1
+        # Applica la combinazione ottimale
+        for idx in best_combination:
             self.df.iloc[idx, self.df.columns.get_loc(self.quantity_column)] = 1
-            
-            # Calcola il nuovo totale
-            new_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
-            remaining_target = target_total - new_total
-            
-            # Se abbiamo superato il target, rimuovi l'ultima quantità aggiunta
-            if remaining_target < 0:
-                self.df.iloc[idx, self.df.columns.get_loc(self.quantity_column)] = 0
-                break
         
         # Calcola il totale finale
         final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
@@ -257,6 +242,97 @@ class ExcelSolverSemplice:
         # Conta le quantità impostate
         quantities_set = (self.df[self.quantity_column] > 0).sum()
         print(f"Quantità impostate a 1: {quantities_set} su {len(self.df)} righe")
+    
+    def _find_optimal_combination(self, prices, target_total):
+        """
+        Trova la combinazione ottimale di prezzi per raggiungere il target
+        """
+        print("Cercando combinazione ottimale...")
+        
+        n_items = len(prices)
+        best_combination = []
+        best_error = float('inf')
+        
+        # Strategia 1: Prova con prezzi più vicini al target medio
+        target_per_item = target_total / n_items
+        print(f"Target per item: {target_per_item:.2f}€")
+        
+        # Ordina per vicinanza al target per item
+        price_diffs = np.abs(prices - target_per_item)
+        sorted_indices = price_diffs.argsort()
+        
+        # Prova diverse combinazioni partendo dai prezzi più vicini al target
+        for max_items in range(1, min(100, n_items) + 1):  # Prova fino a 100 items
+            combination = sorted_indices[:max_items]
+            total = prices[combination].sum()
+            error = abs(total - target_total)
+            
+            if error < best_error:
+                best_error = error
+                best_combination = combination
+                
+                # Se abbiamo raggiunto una precisione accettabile, fermati
+                if error < target_total * 0.01:  # Errore < 1%
+                    print(f"Combinazione ottimale trovata con {len(combination)} items (errore: {error:.2f}€)")
+                    break
+        
+        # Strategia 2: Se la strategia 1 non funziona, usa un approccio greedy più sofisticato
+        if best_error > target_total * 0.05:  # Se l'errore è > 5%
+            print("Strategia 1 non sufficiente, provando strategia greedy avanzata...")
+            best_combination = self._greedy_optimization(prices, target_total)
+        
+        return best_combination
+    
+    def _greedy_optimization(self, prices, target_total):
+        """
+        Ottimizzazione greedy avanzata per trovare la combinazione migliore
+        """
+        print("Applicando ottimizzazione greedy avanzata...")
+        
+        n_items = len(prices)
+        best_combination = []
+        best_error = float('inf')
+        
+        # Prova diverse strategie greedy
+        strategies = [
+            # Strategia 1: Prezzi più alti
+            lambda: prices.argsort()[::-1],
+            # Strategia 2: Prezzi più bassi
+            lambda: prices.argsort(),
+            # Strategia 3: Prezzi più vicini alla media
+            lambda: np.abs(prices - prices.mean()).argsort(),
+            # Strategia 4: Prezzi più vicini al target/n_items
+            lambda: np.abs(prices - target_total / n_items).argsort()
+        ]
+        
+        for i, strategy in enumerate(strategies):
+            sorted_indices = strategy()
+            combination = []
+            current_total = 0
+            
+            for idx in sorted_indices:
+                if current_total + prices[idx] <= target_total * 1.1:  # Permetti 10% di overshoot
+                    combination.append(idx)
+                    current_total += prices[idx]
+                    
+                    # Se abbiamo raggiunto il target, fermati
+                    if current_total >= target_total * 0.95:  # Almeno 95% del target
+                        break
+            
+            # Calcola l'errore per questa strategia
+            total = prices[combination].sum()
+            error = abs(total - target_total)
+            
+            if error < best_error:
+                best_error = error
+                best_combination = combination
+                print(f"Strategia {i+1}: {len(combination)} items, errore: {error:.2f}€")
+                
+                # Se abbiamo raggiunto una precisione accettabile, fermati
+                if error < target_total * 0.02:  # Errore < 2%
+                    break
+        
+        return best_combination
 
     def adjust(self) -> Dict[str, Any]:
         """
