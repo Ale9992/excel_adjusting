@@ -43,6 +43,66 @@ class ExcelSolverSemplice:
         self.df[self.quantity_column] = np.where(np.isfinite(self.df[self.quantity_column]), self.df[self.quantity_column], 0)
         self.df[self.price_column] = np.where(np.isfinite(self.df[self.price_column]), self.df[self.price_column], 0)
     
+    def _distribute_rounding_errors(self, quantities, prices, target_total):
+        """
+        Distribuisce gli errori di arrotondamento per mantenere il totale target
+        """
+        # Calcola i valori decimali e gli errori di arrotondamento
+        decimal_values = quantities
+        rounded_values = quantities.round()
+        
+        # Calcola il totale attuale con i valori arrotondati
+        current_total = (rounded_values * prices).sum()
+        error_total = target_total - current_total
+        
+        print(f"Totale target: {target_total:.2f}")
+        print(f"Totale arrotondato: {current_total:.2f}")
+        print(f"Errore da distribuire: {error_total:.2f}")
+        
+        if abs(error_total) < 0.01:  # Se l'errore è molto piccolo, usa i valori arrotondati
+            return rounded_values.astype(int)
+        
+        # Usa un approccio iterativo per minimizzare l'errore
+        best_quantities = rounded_values.copy()
+        best_error = abs(error_total)
+        
+        # Prova diverse combinazioni di aggiustamenti
+        n_items = len(quantities)
+        
+        # Se l'errore è positivo, prova ad aggiungere 1 a diverse quantità
+        if error_total > 0:
+            for i in range(n_items):
+                test_quantities = rounded_values.copy()
+                test_quantities.iloc[i] += 1
+                test_total = (test_quantities * prices).sum()
+                test_error = abs(test_total - target_total)
+                
+                if test_error < best_error:
+                    best_quantities = test_quantities.copy()
+                    best_error = test_error
+        
+        # Se l'errore è negativo, prova a sottrarre 1 da diverse quantità
+        elif error_total < 0:
+            for i in range(n_items):
+                if rounded_values.iloc[i] > 0:  # Solo se la quantità è > 0
+                    test_quantities = rounded_values.copy()
+                    test_quantities.iloc[i] -= 1
+                    test_total = (test_quantities * prices).sum()
+                    test_error = abs(test_total - target_total)
+                    
+                    if test_error < best_error:
+                        best_quantities = test_quantities.copy()
+                        best_error = test_error
+        
+        # Calcola l'errore finale
+        final_total = (best_quantities * prices).sum()
+        final_error = abs(final_total - target_total)
+        
+        print(f"Errore finale dopo ottimizzazione: {final_error:.2f}")
+        print(f"Precisione: {((target_total - final_error) / target_total * 100):.2f}%")
+        
+        return best_quantities.astype(int)
+
     def adjust(self) -> Dict[str, Any]:
         """
         Algoritmo che modifica SOLO le quantità, lasciando i prezzi invariati
@@ -106,9 +166,15 @@ class ExcelSolverSemplice:
                         print("⚠️ Fattore troppo alto rilevato, limitato a 10 per evitare quantità irrealistiche")
                         multiplier = 10
                     
-                    # Applica il fattore alle quantità positive e arrotonda ai numeri interi
-                    self.df.loc[positive_mask, self.quantity_column] = (self.df.loc[positive_mask, self.quantity_column] * multiplier).round().astype(int)
-                    print(f"Quantità positive moltiplicate per {multiplier:.4f} e arrotondate ai numeri interi")
+                    # Applica il fattore alle quantità positive
+                    modified_quantities = self.df.loc[positive_mask, self.quantity_column] * multiplier
+                    
+                    # Arrotonda ai numeri interi usando l'algoritmo di distribuzione del resto
+                    # per mantenere il totale target
+                    rounded_quantities = self._distribute_rounding_errors(modified_quantities, self.df.loc[positive_mask, self.price_column], needed_from_positives)
+                    
+                    self.df.loc[positive_mask, self.quantity_column] = rounded_quantities
+                    print(f"Quantità positive moltiplicate per {multiplier:.4f} e arrotondate ai numeri interi con distribuzione del resto")
                 else:
                     print("⚠️ Totale positivi è 0, impossibile calcolare il fattore")
             

@@ -161,7 +161,7 @@ L'algoritmo implementa una strategia che modifica **SOLO le quantità**, lascian
 
 1. **Eliminazione Quantità Negative**: Elimina completamente le quantità negative (imposta a 0) per evitare valori negativi
 2. **Fattore Moltiplicativo Protetto**: Calcola un fattore moltiplicativo per le quantità positive con protezioni per evitare valori negativi o irrealistici
-3. **Arrotondamento Numeri Interi**: Arrotonda tutte le quantità ai numeri interi per mantenere la coerenza
+3. **Arrotondamento Numeri Interi Ottimizzato**: Arrotonda tutte le quantità ai numeri interi usando un algoritmo ottimizzato per minimizzare l'errore rispetto al totale target
 4. **Prezzi Invariati**: I prezzi originali rimangono completamente invariati
 5. **Precisione Perfetta**: Raggiunge sempre il totale target esatto
 6. **Verifica Finale**: Controlla che non ci siano quantità negative finali e che siano numeri interi
@@ -174,7 +174,7 @@ L'algoritmo implementa una strategia che modifica **SOLO le quantità**, lascian
 - ✅ **Proporzionale**: Le quantità positive vengono modificate proporzionalmente
 - ✅ **Formule preservate**: Le formule Excel originali rimangono intatte e si ricalcolano automaticamente
 - ✅ **Protezioni**: Evita fattori moltiplicativi negativi o troppo alti
-- ✅ **Numeri interi**: Tutte le quantità sono arrotondate ai numeri interi
+- ✅ **Numeri interi ottimizzati**: Tutte le quantità sono arrotondate ai numeri interi con minimizzazione dell'errore
 - ✅ **Verifica finale**: Controlla che non ci siano quantità negative finali e che siano numeri interi
 
 ## 🐛 Risoluzione Problemi
