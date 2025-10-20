@@ -106,9 +106,9 @@ class ExcelSolverSemplice:
                         print("⚠️ Fattore troppo alto rilevato, limitato a 10 per evitare quantità irrealistiche")
                         multiplier = 10
                     
-                    # Applica il fattore alle quantità positive
-                    self.df.loc[positive_mask, self.quantity_column] = self.df.loc[positive_mask, self.quantity_column] * multiplier
-                    print(f"Quantità positive moltiplicate per {multiplier:.4f}")
+                    # Applica il fattore alle quantità positive e arrotonda ai numeri interi
+                    self.df.loc[positive_mask, self.quantity_column] = (self.df.loc[positive_mask, self.quantity_column] * multiplier).round().astype(int)
+                    print(f"Quantità positive moltiplicate per {multiplier:.4f} e arrotondate ai numeri interi")
                 else:
                     print("⚠️ Totale positivi è 0, impossibile calcolare il fattore")
             
@@ -120,6 +120,11 @@ class ExcelSolverSemplice:
             if negative_final.any():
                 print("⚠️ Rilevate quantità negative finali, impostate a 0")
                 self.df.loc[negative_final, self.quantity_column] = 0
+            
+            # Verifica che tutte le quantità siano numeri interi
+            if not self.df[self.quantity_column].dtype in ['int64', 'int32']:
+                print("⚠️ Convertendo tutte le quantità ai numeri interi")
+                self.df[self.quantity_column] = self.df[self.quantity_column].round().astype(int)
             
             # Calcola il totale finale usando la formula (per verifica)
             final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
@@ -133,6 +138,10 @@ class ExcelSolverSemplice:
             no_negative_quantities = (self.df[self.quantity_column] >= 0).all()
             print(f"Nessuna quantità negativa: {no_negative_quantities}")
             
+            # Verifica che tutte le quantità siano numeri interi
+            all_integers = self.df[self.quantity_column].dtype in ['int64', 'int32']
+            print(f"Tutte le quantità sono numeri interi: {all_integers}")
+            
             # Verifica la precisione
             diff = abs(final_total - self.target_total)
             precision = ((self.target_total - diff) / self.target_total * 100) if self.target_total > 0 else 0
@@ -140,14 +149,15 @@ class ExcelSolverSemplice:
             
             return {
                 "success": True,
-                "message": "Correzione applicata con successo (solo quantità modificate, formule preservate, quantità negative eliminate)",
+                "message": "Correzione applicata con successo (solo quantità modificate, formule preservate, quantità negative eliminate, quantità arrotondate ai numeri interi)",
                 "original_total": current_total,
                 "final_total": final_total,
                 "target_total": self.target_total,
                 "precision": precision,
                 "prices_unchanged": prices_unchanged,
                 "formulas_preserved": True,
-                "no_negative_quantities": no_negative_quantities
+                "no_negative_quantities": no_negative_quantities,
+                "all_integers": all_integers
             }
             
         except Exception as e:
