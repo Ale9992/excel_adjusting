@@ -198,12 +198,16 @@ class ExcelSolverSemplice:
                     # Applica il fattore alle quantità positive
                     modified_quantities = self.df.loc[positive_mask, self.quantity_column] * multiplier
                     
-                    # Arrotonda ai numeri interi usando l'algoritmo di distribuzione del resto
-                    # per mantenere il totale target
-                    rounded_quantities = self._distribute_rounding_errors(modified_quantities, self.df.loc[positive_mask, self.price_column], needed_from_positives)
-                    
-                    self.df.loc[positive_mask, self.quantity_column] = rounded_quantities
-                    print(f"Quantità positive moltiplicate per {multiplier:.4f} e arrotondate ai numeri interi con distribuzione del resto")
+                    # Per file grandi (>1000 righe), usa quantità decimali per raggiungere il target esatto
+                    if len(self.df) > 1000:
+                        print(f"File grande ({len(self.df)} righe) - Usando quantità decimali per target esatto")
+                        self.df.loc[positive_mask, self.quantity_column] = modified_quantities
+                        print(f"Quantità positive moltiplicate per {multiplier:.4f} (mantenute decimali per precisione)")
+                    else:
+                        # Per file piccoli, arrotonda ai numeri interi
+                        rounded_quantities = self._distribute_rounding_errors(modified_quantities, self.df.loc[positive_mask, self.price_column], needed_from_positives)
+                        self.df.loc[positive_mask, self.quantity_column] = rounded_quantities
+                        print(f"Quantità positive moltiplicate per {multiplier:.4f} e arrotondate ai numeri interi con distribuzione del resto")
                 else:
                     print("⚠️ Totale positivi è 0, impossibile calcolare il fattore")
             
@@ -216,28 +220,35 @@ class ExcelSolverSemplice:
                 print("⚠️ Rilevate quantità negative finali, impostate a 0")
                 self.df.loc[negative_final, self.quantity_column] = 0
             
-            # Verifica che tutte le quantità siano numeri interi
-            if not self.df[self.quantity_column].dtype in ['int64', 'int32']:
+            # Verifica che tutte le quantità siano numeri interi (solo per file piccoli)
+            if len(self.df) <= 1000 and not self.df[self.quantity_column].dtype in ['int64', 'int32']:
                 print("⚠️ Convertendo tutte le quantità ai numeri interi")
                 self.df[self.quantity_column] = self.df[self.quantity_column].round().astype(int)
+            elif len(self.df) > 1000:
+                print(f"File grande ({len(self.df)} righe) - Mantenendo quantità decimali per precisione")
             
             # Tentativo finale: se l'errore è ancora significativo, applica un micro-aggiustamento ai prezzi
             final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
             final_error = abs(final_total - self.target_total)
             
             if final_error > 0.01:  # Se l'errore è ancora > 1 centesimo
-                print(f"⚠️ Errore finale: {final_error:.2f}€ - Applicando micro-aggiustamento ai prezzi")
+                print(f"⚠️ Errore finale: {final_error:.2f}€ - Tentando micro-aggiustamento ai prezzi")
                 
-                # Calcola un fattore di correzione molto piccolo per i prezzi
+                # Calcola un fattore di correzione per i prezzi
                 correction_factor = self.target_total / final_total
                 
-                # Applica il fattore solo se è molto vicino a 1 (max 0.1% di variazione)
-                if 0.999 <= correction_factor <= 1.001:
-                    print(f"Fattore di correzione prezzi: {correction_factor:.6f}")
+                # Applica il fattore solo se è ragionevole (max 5% di variazione per file grandi)
+                max_variation = 0.05 if len(self.df) > 1000 else 0.001  # 5% per file grandi, 0.1% per file piccoli
+                min_factor = 1 - max_variation
+                max_factor = 1 + max_variation
+                
+                if min_factor <= correction_factor <= max_factor:
+                    print(f"Fattore di correzione prezzi: {correction_factor:.6f} (variazione max: {max_variation*100:.1f}%)")
                     self.df[self.price_column] = self.df[self.price_column] * correction_factor
                     print("Micro-aggiustamento applicato ai prezzi per raggiungere il target esatto")
                 else:
                     print(f"Fattore di correzione troppo grande ({correction_factor:.6f}), mantenendo i prezzi originali")
+                    print(f"Per file di {len(self.df)} righe, la variazione massima consentita è {max_variation*100:.1f}%")
             
             # Calcola il totale finale usando la formula (per verifica)
             final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
@@ -256,9 +267,13 @@ class ExcelSolverSemplice:
             no_negative_quantities = (self.df[self.quantity_column] >= 0).all()
             print(f"Nessuna quantità negativa: {no_negative_quantities}")
             
-            # Verifica che tutte le quantità siano numeri interi
-            all_integers = self.df[self.quantity_column].dtype in ['int64', 'int32']
-            print(f"Tutte le quantità sono numeri interi: {all_integers}")
+            # Verifica che tutte le quantità siano numeri interi (solo per file piccoli)
+            if len(self.df) <= 1000:
+                all_integers = self.df[self.quantity_column].dtype in ['int64', 'int32']
+                print(f"Tutte le quantità sono numeri interi: {all_integers}")
+            else:
+                all_integers = False  # Per file grandi, le quantità sono decimali
+                print(f"File grande - Quantità decimali per precisione: {all_integers}")
             
             # Verifica la precisione
             diff = abs(final_total - self.target_total)
