@@ -293,46 +293,308 @@ class ExcelSolverSemplice:
         best_combination = []
         best_error = float('inf')
         
-        # Prova diverse strategie greedy
-        strategies = [
-            # Strategia 1: Prezzi più alti
-            lambda: prices.argsort()[::-1],
-            # Strategia 2: Prezzi più bassi
-            lambda: prices.argsort(),
-            # Strategia 3: Prezzi più vicini alla media
-            lambda: np.abs(prices - prices.mean()).argsort(),
-            # Strategia 4: Prezzi più vicini al target/n_items
-            lambda: np.abs(prices - target_total / n_items).argsort()
-        ]
+        # Strategia 1: Algoritmo di Knapsack semplificato
+        print("Tentativo 1: Algoritmo di Knapsack semplificato...")
+        knapsack_combination = self._knapsack_algorithm(prices, target_total)
+        if len(knapsack_combination) > 0:
+            total = prices[knapsack_combination].sum()
+            error = abs(total - target_total)
+            if error < best_error:
+                best_error = error
+                best_combination = knapsack_combination
+                print(f"Knapsack: {len(knapsack_combination)} items, errore: {error:.2f}€")
         
-        for i, strategy in enumerate(strategies):
-            sorted_indices = strategy()
-            combination = []
-            current_total = 0
+        # Strategia 2: Combinazioni multiple con backtracking
+        print("Tentativo 2: Combinazioni multiple con backtracking...")
+        backtrack_combination = self._backtrack_algorithm(prices, target_total)
+        if len(backtrack_combination) > 0:
+            total = prices[backtrack_combination].sum()
+            error = abs(total - target_total)
+            if error < best_error:
+                best_error = error
+                best_combination = backtrack_combination
+                print(f"Backtrack: {len(backtrack_combination)} items, errore: {error:.2f}€")
+        
+        # Strategia 3: Algoritmo genetico semplificato
+        print("Tentativo 3: Algoritmo genetico semplificato...")
+        genetic_combination = self._genetic_algorithm(prices, target_total)
+        if len(genetic_combination) > 0:
+            total = prices[genetic_combination].sum()
+            error = abs(total - target_total)
+            if error < best_error:
+                best_error = error
+                best_combination = genetic_combination
+                print(f"Genetic: {len(genetic_combination)} items, errore: {error:.2f}€")
+        
+        # Strategia 4: Strategie greedy bilanciate (come fallback)
+        if best_error > target_total * 0.05:  # Se l'errore è ancora > 5%
+            print("Tentativo 4: Strategie greedy bilanciate...")
+            strategies = [
+                # Strategia 1: Prezzi più alti
+                lambda: prices.argsort()[::-1],
+                # Strategia 2: Prezzi più bassi
+                lambda: prices.argsort(),
+                # Strategia 3: Prezzi più vicini alla media
+                lambda: np.abs(prices - prices.mean()).argsort(),
+                # Strategia 4: Prezzi più vicini al target/n_items
+                lambda: np.abs(prices - target_total / n_items).argsort(),
+                # Strategia 5: Prezzi bilanciati (mix di alti e bassi)
+                lambda: self._balanced_price_strategy(prices, target_total),
+                # Strategia 6: Prezzi a fascia (esclude solo i più alti)
+                lambda: self._fascia_price_strategy(prices, target_total),
+                # Strategia 7: Prezzi ottimali per target
+                lambda: self._optimal_price_strategy(prices, target_total)
+            ]
             
-            for idx in sorted_indices:
-                if current_total + prices[idx] <= target_total * 1.1:  # Permetti 10% di overshoot
-                    combination.append(idx)
-                    current_total += prices[idx]
+            for i, strategy in enumerate(strategies):
+                sorted_indices = strategy()
+                combination = []
+                current_total = 0
+                
+                for idx in sorted_indices:
+                    if current_total + prices[idx] <= target_total * 1.1:  # Permetti 10% di overshoot
+                        combination.append(idx)
+                        current_total += prices[idx]
+                        
+                        # Se abbiamo raggiunto il target, fermati
+                        if current_total >= target_total * 0.95:  # Almeno 95% del target
+                            break
+                
+                # Calcola l'errore per questa strategia
+                total = prices[combination].sum()
+                error = abs(total - target_total)
+                
+                if error < best_error:
+                    best_error = error
+                    best_combination = combination
+                    print(f"Strategia greedy {i+1}: {len(combination)} items, errore: {error:.2f}€")
                     
-                    # Se abbiamo raggiunto il target, fermati
-                    if current_total >= target_total * 0.95:  # Almeno 95% del target
+                    # Se abbiamo raggiunto una precisione accettabile, fermati
+                    if error < target_total * 0.02:  # Errore < 2%
                         break
-            
-            # Calcola l'errore per questa strategia
+        
+        return best_combination
+    
+    def _knapsack_algorithm(self, prices, target_total):
+        """
+        Algoritmo di Knapsack semplificato per trovare la combinazione ottimale
+        """
+        print("  Eseguendo algoritmo di Knapsack...")
+        
+        n_items = len(prices)
+        # Limita il numero di items per performance
+        max_items = min(50, n_items)
+        
+        # Ordina per rapporto prezzo/valore (in questo caso solo prezzo)
+        sorted_indices = prices.argsort()[::-1][:max_items]
+        
+        best_combination = []
+        best_error = float('inf')
+        
+        # Prova diverse combinazioni
+        for i in range(1, min(20, max_items) + 1):  # Prova fino a 20 items
+            combination = sorted_indices[:i]
             total = prices[combination].sum()
             error = abs(total - target_total)
             
             if error < best_error:
                 best_error = error
                 best_combination = combination
-                print(f"Strategia {i+1}: {len(combination)} items, errore: {error:.2f}€")
                 
-                # Se abbiamo raggiunto una precisione accettabile, fermati
-                if error < target_total * 0.02:  # Errore < 2%
+                if error < target_total * 0.01:  # Errore < 1%
                     break
         
         return best_combination
+    
+    def _backtrack_algorithm(self, prices, target_total):
+        """
+        Algoritmo di backtracking per trovare la combinazione ottimale
+        """
+        print("  Eseguendo algoritmo di backtracking...")
+        
+        n_items = len(prices)
+        # Limita il numero di items per performance
+        max_items = min(30, n_items)
+        
+        # Ordina per prezzo
+        sorted_indices = prices.argsort()[::-1][:max_items]
+        
+        best_combination = []
+        best_error = float('inf')
+        
+        def backtrack(current_combination, current_total, start_idx):
+            nonlocal best_combination, best_error
+            
+            # Se abbiamo raggiunto una precisione accettabile, fermati
+            if abs(current_total - target_total) < target_total * 0.01:
+                best_combination = current_combination.copy()
+                best_error = abs(current_total - target_total)
+                return True
+            
+            # Se abbiamo superato il target, fermati
+            if current_total > target_total * 1.1:
+                return False
+            
+            # Prova ad aggiungere items
+            for i in range(start_idx, len(sorted_indices)):
+                idx = sorted_indices[i]
+                new_total = current_total + prices[idx]
+                
+                if new_total <= target_total * 1.1:  # Permetti 10% di overshoot
+                    current_combination.append(idx)
+                    
+                    if backtrack(current_combination, new_total, i + 1):
+                        return True
+                    
+                    current_combination.pop()
+            
+            return False
+        
+        # Esegui backtracking
+        backtrack([], 0, 0)
+        
+        return best_combination
+    
+    def _genetic_algorithm(self, prices, target_total):
+        """
+        Algoritmo genetico semplificato per trovare la combinazione ottimale
+        """
+        print("  Eseguendo algoritmo genetico...")
+        
+        n_items = len(prices)
+        # Limita il numero di items per performance
+        max_items = min(40, n_items)
+        
+        # Ordina per prezzo
+        sorted_indices = prices.argsort()[::-1][:max_items]
+        
+        # Inizializza popolazione
+        population_size = 20
+        generations = 10
+        
+        # Crea popolazione iniziale
+        population = []
+        for _ in range(population_size):
+            # Crea una combinazione casuale
+            combination = []
+            for i in range(len(sorted_indices)):
+                if np.random.random() < 0.3:  # 30% di probabilità di includere ogni item
+                    combination.append(sorted_indices[i])
+            population.append(combination)
+        
+        best_combination = []
+        best_error = float('inf')
+        
+        for generation in range(generations):
+            # Valuta ogni individuo
+            fitness_scores = []
+            for combination in population:
+                total = prices[combination].sum()
+                error = abs(total - target_total)
+                fitness_scores.append(1 / (1 + error))  # Fitness inversamente proporzionale all'errore
+                
+                if error < best_error:
+                    best_error = error
+                    best_combination = combination
+            
+            # Seleziona i migliori individui
+            sorted_population = sorted(zip(population, fitness_scores), key=lambda x: x[1], reverse=True)
+            elite = [ind[0] for ind in sorted_population[:5]]  # Top 5
+            
+            # Crea nuova popolazione
+            new_population = elite.copy()
+            
+            # Genera nuovi individui
+            while len(new_population) < population_size:
+                # Selezione dei genitori
+                parent1 = elite[np.random.randint(len(elite))]
+                parent2 = elite[np.random.randint(len(elite))]
+                
+                # Crossover
+                child = list(set(parent1 + parent2))
+                
+                # Mutazione
+                if np.random.random() < 0.1:  # 10% di probabilità di mutazione
+                    if child and np.random.random() < 0.5:
+                        child.remove(np.random.choice(child))
+                    else:
+                        new_item = sorted_indices[np.random.randint(len(sorted_indices))]
+                        if new_item not in child:
+                            child.append(new_item)
+                
+                new_population.append(child)
+            
+            population = new_population
+        
+        return best_combination
+    
+    def _balanced_price_strategy(self, prices, target_total):
+        """
+        Strategia bilanciata: mix di prezzi alti e bassi per raggiungere il target
+        """
+        print("  Strategia bilanciata: mix di prezzi alti e bassi...")
+        
+        # Calcola il target per item
+        target_per_item = target_total / len(prices)
+        
+        # Separa prezzi alti e bassi
+        high_prices = prices[prices > target_per_item * 1.5]  # Prezzi > 1.5x target
+        low_prices = prices[prices <= target_per_item * 1.5]  # Prezzi <= 1.5x target
+        
+        # Ordina entrambi i gruppi
+        high_indices = np.where(prices > target_per_item * 1.5)[0]
+        low_indices = np.where(prices <= target_per_item * 1.5)[0]
+        
+        # Ordina per prezzo
+        high_sorted = high_indices[np.argsort(prices[high_indices])[::-1]]  # Prezzi alti decrescenti
+        low_sorted = low_indices[np.argsort(prices[low_indices])[::-1]]    # Prezzi bassi decrescenti
+        
+        # Combina alternando prezzi alti e bassi
+        combined_indices = []
+        max_len = max(len(high_sorted), len(low_sorted))
+        
+        for i in range(max_len):
+            if i < len(high_sorted):
+                combined_indices.append(high_sorted[i])
+            if i < len(low_sorted):
+                combined_indices.append(low_sorted[i])
+        
+        return np.array(combined_indices)
+    
+    def _fascia_price_strategy(self, prices, target_total):
+        """
+        Strategia a fascia: esclude solo i prezzi più alti, include tutto il resto
+        """
+        print("  Strategia a fascia: esclude solo i prezzi più alti...")
+        
+        # Calcola il target per item
+        target_per_item = target_total / len(prices)
+        
+        # Esclude solo i prezzi più alti (top 10%)
+        threshold = np.percentile(prices, 90)  # Top 10% dei prezzi
+        filtered_indices = np.where(prices <= threshold)[0]
+        
+        # Ordina per prezzo decrescente
+        sorted_indices = filtered_indices[np.argsort(prices[filtered_indices])[::-1]]
+        
+        return sorted_indices
+    
+    def _optimal_price_strategy(self, prices, target_total):
+        """
+        Strategia ottimale: trova i prezzi che si avvicinano di più al target
+        """
+        print("  Strategia ottimale: prezzi che si avvicinano al target...")
+        
+        # Calcola il target per item
+        target_per_item = target_total / len(prices)
+        
+        # Calcola la distanza da ogni prezzo al target
+        distances = np.abs(prices - target_per_item)
+        
+        # Ordina per distanza (più vicini al target per primi)
+        sorted_indices = np.argsort(distances)
+        
+        return sorted_indices
 
     def adjust(self) -> Dict[str, Any]:
         """
