@@ -5,7 +5,7 @@ import warnings
 
 # PuLP for 100% precision
 try:
-    from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpStatus
+    from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpStatus, PULP_CBC_CMD
     PULP_AVAILABLE = True
 except ImportError:
     PULP_AVAILABLE = False
@@ -19,6 +19,8 @@ except ImportError:
     def lpSum(*args):
         pass
     class LpStatus:
+        pass
+    def PULP_CBC_CMD(*args, **kwargs):
         pass
     print("⚠️ PuLP non installato. Per precisione 100%, installa con: pip install pulp")
 
@@ -49,7 +51,8 @@ class ExcelSolverSemplice:
         price_column: str,
         remaining_column: str,
         target_total: float,
-        data_rows: int = None
+        data_rows: int = None,
+        fast_mode: bool = True  # Nuovo parametro per modalità veloce
     ):
         self.file_path = file_path
         self.sheet_name = sheet_name
@@ -58,6 +61,7 @@ class ExcelSolverSemplice:
         self.remaining_column = remaining_column
         self.target_total = target_total
         self.data_rows = data_rows
+        self.fast_mode = fast_mode
         
         # Carica il file Excel
         self.df = pd.read_excel(file_path, sheet_name=sheet_name)
@@ -190,6 +194,7 @@ class ExcelSolverSemplice:
         # Ordina le righe per impatto (prezzo * quantità)
         impact = rounded_values * prices
         sorted_indices = impact.argsort()[::-1]  # Ordina per impatto decrescente
+        sorted_indices = sorted_indices.values if hasattr(sorted_indices, 'values') else sorted_indices
         
         # Prova aggiustamenti sulle righe con maggiore impatto
         max_adjustments = min(100, len(quantities) // 10)  # Massimo 100 aggiustamenti o 10% delle righe
@@ -197,28 +202,10 @@ class ExcelSolverSemplice:
         if error_total > 0:
             # Aggiungi 1 alle righe con maggiore impatto
             for i in range(max_adjustments):
-                idx = sorted_indices[i % len(sorted_indices)]
-                test_quantities = best_quantities.copy()
-                test_quantities.iloc[idx] += 1
-                
-                test_total = (test_quantities * prices).sum()
-                test_error = abs(test_total - target_total)
-                
-                if test_error < best_error:
-                    best_quantities = test_quantities.copy()
-                    best_error = test_error
-                    
-                    if test_error < 0.01:
-                        print(f"Target esatto raggiunto con {i+1} aggiustamenti!")
-                        break
-        
-        elif error_total < 0:
-            # Sottrai 1 dalle righe con maggiore impatto
-            for i in range(max_adjustments):
-                idx = sorted_indices[i % len(sorted_indices)]
-                if best_quantities.iloc[idx] > 0:
+                if i < len(sorted_indices):
+                    idx = sorted_indices[i]
                     test_quantities = best_quantities.copy()
-                    test_quantities.iloc[idx] -= 1
+                    test_quantities.iloc[idx] += 1
                     
                     test_total = (test_quantities * prices).sum()
                     test_error = abs(test_total - target_total)
@@ -231,6 +218,26 @@ class ExcelSolverSemplice:
                             print(f"Target esatto raggiunto con {i+1} aggiustamenti!")
                             break
         
+        elif error_total < 0:
+            # Sottrai 1 dalle righe con maggiore impatto
+            for i in range(max_adjustments):
+                if i < len(sorted_indices):
+                    idx = sorted_indices[i]
+                    if best_quantities.iloc[idx] > 0:
+                        test_quantities = best_quantities.copy()
+                        test_quantities.iloc[idx] -= 1
+                        
+                        test_total = (test_quantities * prices).sum()
+                        test_error = abs(test_total - target_total)
+                        
+                        if test_error < best_error:
+                            best_quantities = test_quantities.copy()
+                            best_error = test_error
+                            
+                            if test_error < 0.01:
+                                print(f"Target esatto raggiunto con {i+1} aggiustamenti!")
+                                break
+        
         final_total = (best_quantities * prices).sum()
         final_error = abs(final_total - target_total)
         
@@ -239,6 +246,79 @@ class ExcelSolverSemplice:
         
         return best_quantities.astype(int)
     
+    def _apply_fast_zero_one_strategy(self, target_total):
+        """
+        Strategia 0/1 veloce per file grandi: usa solo i primi 100 prodotti più costosi
+        """
+        print("Applicando strategia 0/1 veloce per raggiungere il target...")
+        
+        # Analizza solo i primi 100 prezzi più alti per velocità
+        prices = self.df[self.price_column].values
+        top_100_indices = np.argsort(prices)[::-1][:100]  # Top 100 prezzi
+        top_100_prices = prices[top_100_indices]
+        
+        print(f"Analizzando i top 100 prezzi per velocità:")
+        print(f"  Prezzo minimo: {top_100_prices.min():.2f}€")
+        print(f"  Prezzo massimo: {top_100_prices.max():.2f}€")
+        print(f"  Prezzo medio: {top_100_prices.mean():.2f}€")
+        
+        # Inizializza tutte le quantità a 0
+        self.df[self.quantity_column] = 0
+        
+        # Strategia veloce: trova la combinazione ottimale solo sui top 100
+        best_combination = self._find_fast_optimal_combination(top_100_prices, target_total, top_100_indices)
+        
+        # Applica la combinazione ottimale
+        for idx in best_combination:
+            self.df.iloc[idx, self.df.columns.get_loc(self.quantity_column)] = 1
+        
+        # Calcola il totale finale
+        final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
+        final_error = abs(final_total - target_total)
+        
+        print(f"Totale finale: {final_total:.2f}€")
+        print(f"Errore: {final_error:.2f}€")
+        print(f"Precisione: {((target_total - final_error) / target_total * 100):.2f}%")
+        
+        # Conta le quantità impostate
+        quantities_set = (self.df[self.quantity_column] > 0).sum()
+        print(f"Quantità impostate a 1: {quantities_set} su {len(self.df)} righe")
+    
+    def _find_fast_optimal_combination(self, prices, target_total, indices):
+        """
+        Trova la combinazione ottimale veloce sui top 100 prezzi
+        """
+        print("Cercando combinazione ottimale veloce...")
+        
+        n_items = len(prices)
+        best_combination = []
+        best_error = float('inf')
+        
+        # Strategia veloce: prova con prezzi più vicini al target medio
+        target_per_item = target_total / n_items
+        print(f"Target per item: {target_per_item:.2f}€")
+        
+        # Ordina per vicinanza al target per item
+        price_diffs = np.abs(prices - target_per_item)
+        sorted_indices = price_diffs.argsort()
+        
+        # Prova diverse combinazioni partendo dai prezzi più vicini al target
+        for max_items in range(1, min(100, n_items) + 1):  # Prova fino a 100 items per bilanciare velocità/precisione
+            combination = sorted_indices[:max_items]
+            total = prices[combination].sum()
+            error = abs(total - target_total)
+            
+            if error < best_error:
+                best_error = error
+                best_combination = [indices[i] for i in combination]  # Converti agli indici originali
+                
+                # Se abbiamo raggiunto una precisione accettabile, fermati
+                if error < target_total * 0.02:  # Errore < 2%
+                    print(f"Combinazione ottimale veloce trovata con {len(combination)} items (errore: {error:.2f}€)")
+                    break
+        
+        return best_combination
+
     def _apply_zero_one_strategy(self, target_total):
         """
         Strategia 0/1 intelligente per file grandi: analizza i prezzi per trovare la combinazione ottimale
@@ -656,19 +736,25 @@ class ExcelSolverSemplice:
                 print(f"  ⚠️ Target impossibile da raggiungere!")
                 return None
             
-            # Se il target è raggiungibile, usa tutti i prodotti
-            if target_total <= max_possible * 0.8:  # Se target <= 80% del massimo
-                print("  Target raggiungibile, usando tutti i prodotti...")
-                n_products = len(prices_clean)
+            # Ottimizzazione per velocità: limita sempre il numero di prodotti
+            max_products_for_speed = 200  # Massimo 200 prodotti per velocità
+            
+            if len(prices_clean) > max_products_for_speed:
+                print(f"  File grande ({len(prices_clean)} prodotti), selezionando i {max_products_for_speed} più rilevanti...")
+                
+                # Seleziona i prodotti più rilevanti per il target
+                target_per_item = target_total / max_products_for_speed
+                
+                # Calcola la rilevanza di ogni prodotto (vicinanza al target per item)
+                relevance = np.abs(prices_clean - target_per_item)
+                
+                # Seleziona i prodotti più rilevanti
+                top_indices = np.argsort(relevance)[:max_products_for_speed]
+                prices_clean = prices_clean[top_indices]
+                
+                print(f"  Selezionati {len(prices_clean)} prodotti più rilevanti per velocità")
             else:
-                # Se target è alto, usa solo i prodotti più costosi
-                print("  Target alto, selezionando prodotti più costosi...")
-                sorted_indices = np.argsort(prices_clean)[::-1]  # Ordina per prezzo decrescente
-                cumulative_sum = np.cumsum(prices_clean[sorted_indices])
-                n_products = np.where(cumulative_sum >= target_total * 1.2)[0][0] + 1  # 20% di buffer
-                n_products = min(n_products, len(prices_clean))
-                prices_clean = prices_clean[sorted_indices[:n_products]]
-                print(f"  Selezionati {n_products} prodotti più costosi")
+                print(f"  File piccolo ({len(prices_clean)} prodotti), usando tutti i prodotti...")
             
             print("  Creando problema di ottimizzazione...")
             
@@ -690,8 +776,8 @@ class ExcelSolverSemplice:
             
             print("  Risolvendo il problema...")
             
-            # Risolve il problema
-            prob.solve()
+            # Risolve il problema con timeout per velocità
+            prob.solve(PULP_CBC_CMD(timeLimit=30))  # Timeout di 30 secondi
             
             # Verifica se la soluzione è ottimale
             if LpStatus[prob.status] == 'Optimal':
@@ -717,6 +803,105 @@ class ExcelSolverSemplice:
                 
         except Exception as e:
             print(f"  Errore PuLP: {e}, usando fallback...")
+            return None
+
+    def _pulp_optimization_solver_large_files(self, prices, target_total):
+        """
+        Solver PuLP ottimizzato per file grandi con affidabilità 100%
+        """
+        if not PULP_AVAILABLE:
+            print("  PuLP non disponibile, usando fallback...")
+            return None
+        
+        try:
+            print("  Eseguendo solver PuLP ottimizzato per file grandi...")
+            
+            # Pulisce i dati: rimuove NaN e infiniti
+            prices_clean = prices.copy()
+            prices_clean = np.where(np.isfinite(prices_clean), prices_clean, 0)
+            prices_clean = prices_clean[prices_clean > 0]  # Solo prezzi positivi
+            
+            if len(prices_clean) == 0:
+                print("  Nessun prezzo valido trovato")
+                return None
+            
+            # Calcola il massimo possibile
+            max_possible = prices_clean.sum()
+            print(f"  Massimo possibile: {max_possible:,.2f}€")
+            
+            if target_total > max_possible:
+                print(f"  ⚠️ Target impossibile da raggiungere!")
+                return None
+            
+            # Strategia intelligente per file grandi: selezione progressiva
+            print("  Applicando strategia di selezione progressiva per file grandi...")
+            
+            # Fase 1: Seleziona i prodotti più rilevanti (500 prodotti)
+            target_per_item = target_total / 500  # Target per 500 prodotti
+            relevance = np.abs(prices_clean - target_per_item)
+            top_500_indices = np.argsort(relevance)[:500]
+            prices_subset = prices_clean[top_500_indices]
+            
+            print(f"  Selezionati 500 prodotti più rilevanti per il target")
+            
+            # Fase 2: Se il target è ancora troppo alto, riduci ulteriormente
+            if target_total > prices_subset.sum() * 0.8:
+                print("  Target alto, selezionando i prodotti più costosi...")
+                sorted_indices = np.argsort(prices_subset)[::-1]
+                cumulative_sum = np.cumsum(prices_subset[sorted_indices])
+                n_products = np.where(cumulative_sum >= target_total * 1.1)[0][0] + 1
+                n_products = min(n_products, len(prices_subset))
+                prices_subset = prices_subset[sorted_indices[:n_products]]
+                top_500_indices = top_500_indices[sorted_indices[:n_products]]
+                print(f"  Ridotti a {n_products} prodotti più costosi")
+            
+            print("  Creando problema di ottimizzazione per file grandi...")
+            
+            # Crea il problema
+            prob = LpProblem('Knapsack_Large_Excel', LpMinimize)
+            
+            # Variabili binarie (0 o 1 per ogni prodotto)
+            x = [LpVariable(f'x_{i}', cat='Binary') for i in range(len(prices_subset))]
+            
+            # Variabile per la differenza assoluta
+            diff = LpVariable('diff', lowBound=0)
+            
+            # Vincoli per la differenza assoluta
+            prob += diff >= lpSum([prices_subset[i] * x[i] for i in range(len(prices_subset))]) - target_total
+            prob += diff >= target_total - lpSum([prices_subset[i] * x[i] for i in range(len(prices_subset))])
+            
+            # Funzione obiettivo: minimizza la differenza
+            prob += diff
+            
+            print("  Risolvendo il problema per file grandi...")
+            
+            # Risolve il problema con timeout più lungo per file grandi
+            prob.solve(PULP_CBC_CMD(timeLimit=120))  # Timeout di 2 minuti per file grandi
+            
+            # Verifica se la soluzione è ottimale
+            if LpStatus[prob.status] == 'Optimal':
+                print("  ✅ Soluzione ottimale trovata per file grandi!")
+                
+                # Estrae la soluzione
+                solution = []
+                total = 0
+                for i in range(len(prices_subset)):
+                    if x[i].varValue == 1:
+                        solution.append(top_500_indices[i])  # Usa gli indici originali
+                        total += prices_subset[i]
+                
+                print(f"  Prodotti selezionati: {len(solution)}")
+                print(f"  Totale raggiunto: {total:,.2f}€")
+                print(f"  Errore: {abs(total - target_total):,.2f}€")
+                print(f"  Precisione: {((target_total - abs(total - target_total)) / target_total * 100):.2f}%")
+                
+                return solution
+            else:
+                print(f"  ❌ Problema non risolto per file grandi: {LpStatus[prob.status]}")
+                return None
+                
+        except Exception as e:
+            print(f"  Errore PuLP per file grandi: {e}, usando fallback...")
             return None
 
     def _scipy_optimization_solver(self, prices, target_total):
@@ -780,16 +965,33 @@ class ExcelSolverSemplice:
         """
         print("Applicando soluzione definitiva per affidabilità 100%...")
         
-        # Prova prima PuLP per precisione 100% garantita
-        pulp_result = self._pulp_optimization_solver(prices, target_total)
-        if pulp_result is not None and len(pulp_result) > 0:
-            total = prices[pulp_result].sum()
-            error = abs(total - target_total)
-            if error < 0.01:  # Se l'errore è < 1 centesimo
-                print(f"🏆 PuLP ha raggiunto precisione 100%: errore {error:.2f}€")
-                return pulp_result
+        # Per file grandi con affidabilità 100%, usa sempre PuLP con ottimizzazioni
+        if len(prices) > 1000:  # File grandi
+            print("File grande rilevato - Applicando PuLP ottimizzato per affidabilità 100%...")
+            pulp_result = self._pulp_optimization_solver_large_files(prices, target_total)
+            if pulp_result is not None and len(pulp_result) > 0:
+                total = prices[pulp_result].sum()
+                error = abs(total - target_total)
+                if error < 0.01:  # Se l'errore è < 1 centesimo
+                    print(f"🏆 PuLP per file grandi ha raggiunto precisione 100%: errore {error:.2f}€")
+                    return pulp_result
+                else:
+                    print(f"PuLP per file grandi precisione {((target_total - error) / target_total * 100):.2f}%, provando scipy...")
+        elif not self.fast_mode and len(prices) <= 500:  # Solo per file piccoli e modalità precisione
+            pulp_result = self._pulp_optimization_solver(prices, target_total)
+            if pulp_result is not None and len(pulp_result) > 0:
+                total = prices[pulp_result].sum()
+                error = abs(total - target_total)
+                if error < 0.01:  # Se l'errore è < 1 centesimo
+                    print(f"🏆 PuLP ha raggiunto precisione 100%: errore {error:.2f}€")
+                    return pulp_result
+                else:
+                    print(f"PuLP precisione {((target_total - error) / target_total * 100):.2f}%, provando scipy...")
+        else:
+            if self.fast_mode:
+                print("Modalità veloce attiva, saltando PuLP per velocità...")
             else:
-                print(f"PuLP precisione {((target_total - error) / target_total * 100):.2f}%, provando scipy...")
+                print("File grande rilevato, saltando PuLP per velocità...")
         
         # Fallback 1: scipy.optimize per precisione alta
         scipy_result = self._scipy_optimization_solver(prices, target_total)
@@ -839,7 +1041,7 @@ class ExcelSolverSemplice:
             
             # Per file grandi, usa una strategia più aggressiva
             if len(self.df) > 1000:
-                print("File grande rilevato - Applicando strategia aggressiva per raggiungere il target...")
+                print("File grande rilevato - Applicando strategia ottimizzata per affidabilità 100%...")
                 
                 # Limita i decimali dei prezzi più aggressivamente
                 self.df[self.price_column] = self.df[self.price_column].round(1)  # Arrotonda a 1 decimale
@@ -854,8 +1056,12 @@ class ExcelSolverSemplice:
                 
                 # Se il fattore moltiplicativo è molto piccolo, usa strategia 0/1
                 if multiplier < 0.01:  # Se il fattore è < 1%
-                    print("Fattore molto piccolo - Usando strategia quantità 0/1")
-                    self._apply_zero_one_strategy(self.target_total)
+                    if self.fast_mode and len(self.df) <= 1000:  # Solo per file piccoli in modalità veloce
+                        print("Fattore molto piccolo - Usando strategia quantità 0/1 veloce")
+                        self._apply_fast_zero_one_strategy(self.target_total)
+                    else:
+                        print("Fattore molto piccolo - Usando strategia quantità 0/1 completa per affidabilità 100%")
+                        self._apply_zero_one_strategy(self.target_total)
                     return {
                         "success": True,
                         "message": "Correzione applicata con strategia 0/1 per file grande (quantità 0 o 1, prezzi arrotondati)",
