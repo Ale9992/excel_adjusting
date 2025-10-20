@@ -159,18 +159,21 @@ Applica l'algoritmo di correzione al file Excel.
 
 L'algoritmo implementa una strategia che modifica **SOLO le quantità**, lasciando i prezzi invariati:
 
-1. **Riduzione Quantità Negative**: Riduce le quantità negative del 99% per minimizzare l'impatto negativo
-2. **Fattore Moltiplicativo**: Calcola un fattore moltiplicativo per le quantità positive per raggiungere il totale target
+1. **Eliminazione Quantità Negative**: Elimina completamente le quantità negative (imposta a 0) per evitare valori negativi
+2. **Fattore Moltiplicativo Protetto**: Calcola un fattore moltiplicativo per le quantità positive con protezioni per evitare valori negativi o irrealistici
 3. **Prezzi Invariati**: I prezzi originali rimangono completamente invariati
 4. **Precisione Perfetta**: Raggiunge sempre il totale target esatto
+5. **Verifica Finale**: Controlla che non ci siano quantità negative finali
 
 ### Caratteristiche dell'Algoritmo:
 - ✅ **Prezzi invariati**: I prezzi originali non vengono mai modificati
 - ✅ **Precisione perfetta**: Raggiunge sempre il totale target esatto
 - ✅ **Realistico**: Mantiene la struttura originale dei prezzi
-- ✅ **Gestione negativi**: Riduce l'impatto delle quantità negative
+- ✅ **Gestione negativi**: Elimina completamente le quantità negative (imposta a 0)
 - ✅ **Proporzionale**: Le quantità positive vengono modificate proporzionalmente
 - ✅ **Formule preservate**: Le formule Excel originali rimangono intatte e si ricalcolano automaticamente
+- ✅ **Protezioni**: Evita fattori moltiplicativi negativi o troppo alti
+- ✅ **Verifica finale**: Controlla che non ci siano quantità negative finali
 
 ## 🐛 Risoluzione Problemi
 

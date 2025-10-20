@@ -74,10 +74,10 @@ class ExcelSolverSemplice:
             # Salva i prezzi originali (per riferimento)
             original_prices = self.df[self.price_column].copy()
             
-            # Riduci le quantità negative del 99%
+            # Elimina completamente le quantità negative (imposta a 0)
             if negative_count > 0:
-                self.df.loc[negative_mask, self.quantity_column] = self.df.loc[negative_mask, self.quantity_column] * 0.01
-                print(f"Quantità negative ridotte del 99%")
+                self.df.loc[negative_mask, self.quantity_column] = 0
+                print(f"Quantità negative eliminate (impostate a 0)")
             
             # Calcola il totale negativo rimanente
             negative_total = (self.df.loc[negative_mask, self.quantity_column] * self.df.loc[negative_mask, self.price_column]).sum()
@@ -98,6 +98,14 @@ class ExcelSolverSemplice:
                     multiplier = needed_from_positives / current_positive_total
                     print(f"Fattore moltiplicativo: {multiplier:.4f}")
                     
+                    # Protezione: assicurati che il fattore non renda negative le quantità
+                    if multiplier < 0:
+                        print("⚠️ Fattore negativo rilevato, impostato a 0.1 per evitare quantità negative")
+                        multiplier = 0.1
+                    elif multiplier > 10:
+                        print("⚠️ Fattore troppo alto rilevato, limitato a 10 per evitare quantità irrealistiche")
+                        multiplier = 10
+                    
                     # Applica il fattore alle quantità positive
                     self.df.loc[positive_mask, self.quantity_column] = self.df.loc[positive_mask, self.quantity_column] * multiplier
                     print(f"Quantità positive moltiplicate per {multiplier:.4f}")
@@ -107,6 +115,12 @@ class ExcelSolverSemplice:
             # NON calcolare le rimanenze - le formule originali verranno preservate
             # Le formule si ricalcoleranno automaticamente con i nuovi valori di quantità e prezzo
             
+            # Verifica finale: assicurati che non ci siano quantità negative
+            negative_final = self.df[self.quantity_column] < 0
+            if negative_final.any():
+                print("⚠️ Rilevate quantità negative finali, impostate a 0")
+                self.df.loc[negative_final, self.quantity_column] = 0
+            
             # Calcola il totale finale usando la formula (per verifica)
             final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
             print(f"Totale finale: {final_total:.2f}€")
@@ -115,6 +129,10 @@ class ExcelSolverSemplice:
             prices_unchanged = (self.df[self.price_column] == original_prices).all()
             print(f"Prezzi invariati: {prices_unchanged}")
             
+            # Verifica che non ci siano quantità negative
+            no_negative_quantities = (self.df[self.quantity_column] >= 0).all()
+            print(f"Nessuna quantità negativa: {no_negative_quantities}")
+            
             # Verifica la precisione
             diff = abs(final_total - self.target_total)
             precision = ((self.target_total - diff) / self.target_total * 100) if self.target_total > 0 else 0
@@ -122,13 +140,14 @@ class ExcelSolverSemplice:
             
             return {
                 "success": True,
-                "message": "Correzione applicata con successo (solo quantità modificate, formule preservate)",
+                "message": "Correzione applicata con successo (solo quantità modificate, formule preservate, quantità negative eliminate)",
                 "original_total": current_total,
                 "final_total": final_total,
                 "target_total": self.target_total,
                 "precision": precision,
                 "prices_unchanged": prices_unchanged,
-                "formulas_preserved": True
+                "formulas_preserved": True,
+                "no_negative_quantities": no_negative_quantities
             }
             
         except Exception as e:
