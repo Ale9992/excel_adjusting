@@ -21,3 +21,7 @@ pydantic==2.10.3
 
 # Dipendenze opzionali per sviluppo
 python-dotenv==1.0.1  # Per variabili d'ambiente
+
+# Ottimizzazione per precisione 100%
+pulp  # Per precisione 100% con programmazione lineare intera
+scipy  # Per algoritmi di ottimizzazione avanzati
