@@ -45,7 +45,7 @@ class ExcelSolverSemplice:
     
     def _distribute_rounding_errors(self, quantities, prices, target_total):
         """
-        Distribuisce gli errori di arrotondamento per mantenere il totale target
+        Distribuisce gli errori di arrotondamento per raggiungere il target esatto
         """
         # Calcola i valori decimali e gli errori di arrotondamento
         decimal_values = quantities
@@ -62,43 +62,72 @@ class ExcelSolverSemplice:
         if abs(error_total) < 0.01:  # Se l'errore è molto piccolo, usa i valori arrotondati
             return rounded_values.astype(int)
         
-        # Usa un approccio iterativo per minimizzare l'errore
+        # Usa un algoritmo più avanzato per trovare la combinazione ottimale
         best_quantities = rounded_values.copy()
         best_error = abs(error_total)
         
-        # Prova diverse combinazioni di aggiustamenti
         n_items = len(quantities)
+        
+        # Prova combinazioni multiple per raggiungere il target esatto
+        max_attempts = min(100, 2**n_items)  # Limita le combinazioni per performance
         
         # Se l'errore è positivo, prova ad aggiungere 1 a diverse quantità
         if error_total > 0:
-            for i in range(n_items):
+            # Prova combinazioni di aggiustamenti positivi
+            for attempt in range(max_attempts):
                 test_quantities = rounded_values.copy()
-                test_quantities.iloc[i] += 1
+                adjustments_made = 0
+                
+                # Prova diverse combinazioni di aggiustamenti
+                for i in range(n_items):
+                    if attempt & (1 << i):  # Usa i bit per le combinazioni
+                        test_quantities.iloc[i] += 1
+                        adjustments_made += 1
+                
+                # Calcola il nuovo totale
                 test_total = (test_quantities * prices).sum()
                 test_error = abs(test_total - target_total)
                 
                 if test_error < best_error:
                     best_quantities = test_quantities.copy()
                     best_error = test_error
+                    
+                    # Se abbiamo raggiunto il target esatto, fermati
+                    if test_error < 0.01:
+                        print(f"Target esatto raggiunto con {adjustments_made} aggiustamenti!")
+                        break
         
         # Se l'errore è negativo, prova a sottrarre 1 da diverse quantità
         elif error_total < 0:
-            for i in range(n_items):
-                if rounded_values.iloc[i] > 0:  # Solo se la quantità è > 0
-                    test_quantities = rounded_values.copy()
-                    test_quantities.iloc[i] -= 1
-                    test_total = (test_quantities * prices).sum()
-                    test_error = abs(test_total - target_total)
+            # Prova combinazioni di aggiustamenti negativi
+            for attempt in range(max_attempts):
+                test_quantities = rounded_values.copy()
+                adjustments_made = 0
+                
+                # Prova diverse combinazioni di aggiustamenti
+                for i in range(n_items):
+                    if attempt & (1 << i) and test_quantities.iloc[i] > 0:  # Solo se la quantità è > 0
+                        test_quantities.iloc[i] -= 1
+                        adjustments_made += 1
+                
+                # Calcola il nuovo totale
+                test_total = (test_quantities * prices).sum()
+                test_error = abs(test_total - target_total)
+                
+                if test_error < best_error:
+                    best_quantities = test_quantities.copy()
+                    best_error = test_error
                     
-                    if test_error < best_error:
-                        best_quantities = test_quantities.copy()
-                        best_error = test_error
+                    # Se abbiamo raggiunto il target esatto, fermati
+                    if test_error < 0.01:
+                        print(f"Target esatto raggiunto con {adjustments_made} aggiustamenti!")
+                        break
         
         # Calcola l'errore finale
         final_total = (best_quantities * prices).sum()
         final_error = abs(final_total - target_total)
         
-        print(f"Errore finale dopo ottimizzazione: {final_error:.2f}")
+        print(f"Errore finale dopo ottimizzazione avanzata: {final_error:.2f}")
         print(f"Precisione: {((target_total - final_error) / target_total * 100):.2f}%")
         
         return best_quantities.astype(int)
@@ -192,13 +221,36 @@ class ExcelSolverSemplice:
                 print("⚠️ Convertendo tutte le quantità ai numeri interi")
                 self.df[self.quantity_column] = self.df[self.quantity_column].round().astype(int)
             
+            # Tentativo finale: se l'errore è ancora significativo, applica un micro-aggiustamento ai prezzi
+            final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
+            final_error = abs(final_total - self.target_total)
+            
+            if final_error > 0.01:  # Se l'errore è ancora > 1 centesimo
+                print(f"⚠️ Errore finale: {final_error:.2f}€ - Applicando micro-aggiustamento ai prezzi")
+                
+                # Calcola un fattore di correzione molto piccolo per i prezzi
+                correction_factor = self.target_total / final_total
+                
+                # Applica il fattore solo se è molto vicino a 1 (max 0.1% di variazione)
+                if 0.999 <= correction_factor <= 1.001:
+                    print(f"Fattore di correzione prezzi: {correction_factor:.6f}")
+                    self.df[self.price_column] = self.df[self.price_column] * correction_factor
+                    print("Micro-aggiustamento applicato ai prezzi per raggiungere il target esatto")
+                else:
+                    print(f"Fattore di correzione troppo grande ({correction_factor:.6f}), mantenendo i prezzi originali")
+            
             # Calcola il totale finale usando la formula (per verifica)
             final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
             print(f"Totale finale: {final_total:.2f}€")
             
-            # Verifica che i prezzi siano rimasti invariati
+            # Verifica che i prezzi siano rimasti invariati (o con micro-aggiustamento)
             prices_unchanged = (self.df[self.price_column] == original_prices).all()
-            print(f"Prezzi invariati: {prices_unchanged}")
+            if not prices_unchanged:
+                # Calcola la variazione percentuale dei prezzi
+                price_variation = ((self.df[self.price_column] - original_prices) / original_prices * 100).abs().max()
+                print(f"Prezzi con micro-aggiustamento: variazione massima {price_variation:.4f}%")
+            else:
+                print(f"Prezzi invariati: {prices_unchanged}")
             
             # Verifica che non ci siano quantità negative
             no_negative_quantities = (self.df[self.quantity_column] >= 0).all()
@@ -213,9 +265,15 @@ class ExcelSolverSemplice:
             precision = ((self.target_total - diff) / self.target_total * 100) if self.target_total > 0 else 0
             print(f"Precisione: {precision:.2f}%")
             
+            # Determina il messaggio in base al tipo di correzione applicata
+            if prices_unchanged:
+                message = "Correzione applicata con successo (solo quantità modificate, formule preservate, quantità negative eliminate, quantità arrotondate ai numeri interi)"
+            else:
+                message = "Correzione applicata con successo (quantità modificate, micro-aggiustamento prezzi per target esatto, formule preservate, quantità negative eliminate, quantità arrotondate ai numeri interi)"
+            
             return {
                 "success": True,
-                "message": "Correzione applicata con successo (solo quantità modificate, formule preservate, quantità negative eliminate, quantità arrotondate ai numeri interi)",
+                "message": message,
                 "original_total": current_total,
                 "final_total": final_total,
                 "target_total": self.target_total,
@@ -223,7 +281,8 @@ class ExcelSolverSemplice:
                 "prices_unchanged": prices_unchanged,
                 "formulas_preserved": True,
                 "no_negative_quantities": no_negative_quantities,
-                "all_integers": all_integers
+                "all_integers": all_integers,
+                "target_reached_exactly": abs(final_total - self.target_total) < 0.01
             }
             
         except Exception as e:
