@@ -104,11 +104,11 @@ class ExcelSolverSemplice:
                 else:
                     print("⚠️ Totale positivi è 0, impossibile calcolare il fattore")
             
-            # Calcola le nuove rimanenze (quantità modificate × prezzi originali)
-            self.df[self.remaining_column] = self.df[self.quantity_column] * self.df[self.price_column]
+            # NON calcolare le rimanenze - le formule originali verranno preservate
+            # Le formule si ricalcoleranno automaticamente con i nuovi valori di quantità e prezzo
             
-            # Calcola il totale finale
-            final_total = self.df[self.remaining_column].sum()
+            # Calcola il totale finale usando la formula (per verifica)
+            final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
             print(f"Totale finale: {final_total:.2f}€")
             
             # Verifica che i prezzi siano rimasti invariati
@@ -122,12 +122,13 @@ class ExcelSolverSemplice:
             
             return {
                 "success": True,
-                "message": "Correzione applicata con successo (solo quantità modificate)",
+                "message": "Correzione applicata con successo (solo quantità modificate, formule preservate)",
                 "original_total": current_total,
                 "final_total": final_total,
                 "target_total": self.target_total,
                 "precision": precision,
-                "prices_unchanged": prices_unchanged
+                "prices_unchanged": prices_unchanged,
+                "formulas_preserved": True
             }
             
         except Exception as e:

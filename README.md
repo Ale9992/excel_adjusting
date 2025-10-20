@@ -170,6 +170,7 @@ L'algoritmo implementa una strategia che modifica **SOLO le quantità**, lascian
 - ✅ **Realistico**: Mantiene la struttura originale dei prezzi
 - ✅ **Gestione negativi**: Riduce l'impatto delle quantità negative
 - ✅ **Proporzionale**: Le quantità positive vengono modificate proporzionalmente
+- ✅ **Formule preservate**: Le formule Excel originali rimangono intatte e si ricalcolano automaticamente
 
 ## 🐛 Risoluzione Problemi
 

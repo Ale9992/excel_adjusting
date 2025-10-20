@@ -365,8 +365,8 @@ async def adjust_excel(
                             ws.cell(row=row_idx, column=quantity_col_idx, value=solver.df.iloc[i][solver.quantity_column])
                             # Aggiorna prezzo
                             ws.cell(row=row_idx, column=price_col_idx, value=solver.df.iloc[i][solver.price_column])
-                            # Aggiorna rimanenze (calcolate)
-                            ws.cell(row=row_idx, column=remaining_col_idx, value=solver.df.iloc[i][solver.remaining_column])
+                            # NON aggiornare le rimanenze - mantieni le formule originali
+                            # Le formule si ricalcoleranno automaticamente con i nuovi valori di quantità e prezzo
                     
                     # Aggiorna la formula speciale se presente
                     if hasattr(solver, 'special_formula_row') and solver.special_formula_row:
@@ -379,6 +379,15 @@ async def adjust_excel(
             # Forza il ricalcolo delle formule
             wb.calculation.calcMode = 'auto'
             wb.calculation.fullCalcOnLoad = True
+            
+            # Ricalcola tutte le formule nel foglio
+            if sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                # Forza il ricalcolo delle formule
+                for row in ws.iter_rows():
+                    for cell in row:
+                        if cell.data_type == 'f':  # Se è una formula
+                            cell.value = cell.value  # Forza il ricalcolo
             
             # Forza il ricalcolo di tutte le formule nel foglio
             for sheet in wb.worksheets:
