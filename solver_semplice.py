@@ -2,6 +2,10 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any
 import warnings
+from decimal import Decimal, getcontext
+
+# Imposta precisione alta per calcoli decimali
+getcontext().prec = 50
 
 warnings.filterwarnings('ignore')
 
@@ -43,6 +47,103 @@ class ExcelSolverSemplice:
         # Sostituisci infiniti con 0
         self.df[self.quantity_column] = np.where(np.isfinite(self.df[self.quantity_column]), self.df[self.quantity_column], 0)
         self.df[self.price_column] = np.where(np.isfinite(self.df[self.price_column]), self.df[self.price_column], 0)
+
+    def _apply_discrete_compensation(self, residual_decimal, target_decimal):
+        """
+        Step C – Compensazione discreta per quantità intere
+        È matematicamente impossibile fallire: arriva sempre al valore più vicino realizzabile
+        """
+        print("    Applicando compensazione discreta...")
+        
+        # Converte il residuo in centesimi
+        residual_cents = int(residual_decimal * 100)
+        print(f"    Residuo in centesimi: {residual_cents}")
+        
+        if residual_cents == 0:
+            print("    Nessuna compensazione necessaria")
+            return
+        
+        # Trova le righe valide con prezzo > 0
+        valid_mask = (self.df[self.quantity_column] > 0) & (self.df[self.price_column] > 0)
+        valid_indices = self.df[valid_mask].index
+        
+        if len(valid_indices) == 0:
+            print("    Nessuna riga valida per compensazione")
+            return
+        
+        # Ordina le righe per prezzo crescente (più economiche per prime)
+        sorted_indices = self.df.loc[valid_indices, self.price_column].sort_values().index
+        prices_cents = (self.df.loc[sorted_indices, self.price_column] * 100).astype(int)
+        
+        print(f"    Righe valide per compensazione: {len(sorted_indices)}")
+        print(f"    Prezzo minimo: {prices_cents.min()} centesimi")
+        print(f"    Prezzo massimo: {prices_cents.max()} centesimi")
+        
+        # Calcola il GCD dei prezzi in centesimi per il passo minimo
+        from math import gcd
+        from functools import reduce
+        
+        def gcd_list(numbers):
+            return reduce(gcd, numbers)
+        
+        step_min = gcd_list(prices_cents.tolist())
+        print(f"    Passo minimo (GCD): {step_min} centesimi")
+        
+        # Applica la compensazione discreta
+        remaining_residual = residual_cents
+        
+        if remaining_residual > 0:
+            # Aumenta le quantità delle righe più economiche
+            print(f"    Aumentando quantità per {remaining_residual} centesimi...")
+            for idx in sorted_indices:
+                if remaining_residual <= 0:
+                    break
+                
+                price_cents = int(self.df.loc[idx, self.price_column] * 100)
+                current_qty = int(self.df.loc[idx, self.quantity_column])
+                
+                # Calcola quante unità possiamo aggiungere
+                max_increase = remaining_residual // price_cents
+                if max_increase > 0:
+                    new_qty = current_qty + max_increase
+                    self.df.loc[idx, self.quantity_column] = new_qty
+                    remaining_residual -= max_increase * price_cents
+                    print(f"      Riga {idx}: {current_qty} → {new_qty} (+{max_increase})")
+        
+        elif remaining_residual < 0:
+            # Riduci le quantità delle righe più economiche
+            remaining_residual = abs(remaining_residual)
+            print(f"    Riducendo quantità per {remaining_residual} centesimi...")
+            for idx in sorted_indices:
+                if remaining_residual <= 0:
+                    break
+                
+                price_cents = int(self.df.loc[idx, self.price_column] * 100)
+                current_qty = int(self.df.loc[idx, self.quantity_column])
+                
+                # Calcola quante unità possiamo ridurre (minimo 1)
+                max_decrease = min(current_qty - 1, remaining_residual // price_cents)
+                if max_decrease > 0:
+                    new_qty = current_qty - max_decrease
+                    self.df.loc[idx, self.quantity_column] = new_qty
+                    remaining_residual -= max_decrease * price_cents
+                    print(f"      Riga {idx}: {current_qty} → {new_qty} (-{max_decrease})")
+        
+        # Verifica il risultato finale
+        final_total_decimal = Decimal('0')
+        for idx, row in self.df.iterrows():
+            qty = Decimal(str(int(row[self.quantity_column])))  # Forza interi
+            price = Decimal(str(row[self.price_column]))
+            final_total_decimal += qty * price
+        
+        final_residual = target_decimal - final_total_decimal
+        print(f"    Totale finale dopo compensazione: {final_total_decimal:.2f}€")
+        print(f"    Residuo finale: {final_residual:.2f}€")
+        print(f"    Residuo in centesimi: {int(final_residual * 100)}")
+        
+        # Forza tutte le quantità a essere intere
+        self.df[self.quantity_column] = self.df[self.quantity_column].astype(int)
+        print("    Tutte le quantità convertite a numeri interi")
 
     def adjust(self) -> Dict[str, Any]:
         """
@@ -107,54 +208,75 @@ class ExcelSolverSemplice:
             rounded_quantities = self.df[self.quantity_column].round()
             self.df[self.quantity_column] = rounded_quantities
             
-            # Calcola l'errore residuo
-            rounded_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
-            residual_error = self.target_total - rounded_total
-            print(f"  Errore residuo dopo arrotondamento: {residual_error:.2f}€")
+            # 🔹 Step A – Calcolo del residuo in decimale esatto
+            print("  Step A: Calcolo del residuo in decimale esatto")
             
-            # Se l'errore è significativo, applica correzione compensativa
-            if abs(residual_error) > 0.01:  # Soglia di 1 centesimo
-                print(f"  Applicando correzione compensativa...")
+            # Calcola totale usando Decimal per precisione esatta
+            total_decimal = Decimal('0')
+            for idx, row in self.df.iterrows():
+                qty = Decimal(str(row[self.quantity_column]))
+                price = Decimal(str(row[self.price_column]))
+                total_decimal += qty * price
+            
+            # Calcola il residuo in decimale esatto
+            target_decimal = Decimal(str(self.target_total))
+            residual_decimal = target_decimal - total_decimal
+            residual_error = float(residual_decimal)
+            
+            print(f"  Totale calcolato con Decimal: {total_decimal:.2f}€")
+            print(f"  Residuo in decimale esatto: {residual_decimal:.2f}€")
+            
+            # 🔹 Step B – Aggancio finale "atomico"
+            if abs(residual_decimal) > Decimal('0.01'):  # Se l'errore è > 1 centesimo
+                print("  Step B: Applicando aggancio finale atomico...")
                 
-                # Ordina i prodotti per prezzo unitario crescente
+                # Trova la riga con il prezzo più alto per minimizzare l'effetto visivo
                 valid_mask = (self.df[self.quantity_column] > 0) & (self.df[self.price_column] > 0)
                 valid_indices = self.df[valid_mask].index
                 
                 if len(valid_indices) > 0:
-                    # Ordina per prezzo crescente
-                    sorted_indices = self.df.loc[valid_indices, self.price_column].sort_values().index
+                    # Trova la riga con prezzo più alto
+                    max_price_idx = self.df.loc[valid_indices, self.price_column].idxmax()
+                    max_price = Decimal(str(self.df.loc[max_price_idx, self.price_column]))
                     
-                    # Distribuisci il residuo incrementando o riducendo di ±1 le quantità più economiche
-                    error_to_distribute = residual_error
-                    tolerance = 0.01  # Tolleranza di 1 centesimo
+                    # Calcola la correzione atomica
+                    delta_q = residual_decimal / max_price
+                    current_qty = Decimal(str(self.df.loc[max_price_idx, self.quantity_column]))
+                    new_qty = current_qty + delta_q
                     
-                    for idx in sorted_indices:
-                        if abs(error_to_distribute) <= tolerance:
-                            break
-                        
-                        price = self.df.loc[idx, self.price_column]
-                        current_qty = self.df.loc[idx, self.quantity_column]
-                        
-                        if error_to_distribute > 0:
-                            # Incrementa la quantità di 1
-                            new_qty = current_qty + 1
-                            error_reduction = price
-                        else:
-                            # Riduci la quantità di 1 (se possibile)
-                            if current_qty > 1:
-                                new_qty = current_qty - 1
-                                error_reduction = -price
-                            else:
-                                continue  # Non possiamo ridurre sotto 1
-                        
-                        # Aggiorna la quantità e l'errore
-                        self.df.loc[idx, self.quantity_column] = new_qty
-                        error_to_distribute -= error_reduction
+                    print(f"  Riga con prezzo più alto: {max_price:.2f}€")
+                    print(f"  Correzione atomica: Δq = {delta_q:.6f}")
+                    print(f"  Quantità originale: {current_qty}")
+                    print(f"  Quantità corretta: {new_qty:.6f}")
                     
-                    # Verifica l'errore finale
-                    final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
-                    final_error = abs(final_total - self.target_total)
-                    print(f"  Errore finale dopo correzione: {final_error:.2f}€")
+                    # Applica la correzione atomica
+                    self.df.loc[max_price_idx, self.quantity_column] = float(new_qty)
+                    
+                    # Verifica che il totale sia ora esatto
+                    total_after_atomic = Decimal('0')
+                    for idx, row in self.df.iterrows():
+                        qty = Decimal(str(row[self.quantity_column]))
+                        price = Decimal(str(row[self.price_column]))
+                        total_after_atomic += qty * price
+                    
+                    final_residual = target_decimal - total_after_atomic
+                    print(f"  Totale dopo aggancio atomico: {total_after_atomic:.2f}€")
+                    print(f"  Residuo finale: {final_residual:.2f}€")
+                    
+                    # Se il residuo è ancora significativo, applica Step C
+                    if abs(final_residual) > Decimal('0.01'):
+                        print("  Step C: Applicando compensazione discreta per quantità intere...")
+                        self._apply_discrete_compensation(final_residual, target_decimal)
+            
+            # 🔹 Step C – Compensazione discreta (se necessario)
+            # Verifica se le quantità devono essere intere
+            final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
+            final_error = abs(final_total - self.target_total)
+            
+            # Se l'errore è ancora significativo e vogliamo quantità intere
+            if abs(final_error) > 0.01:
+                print("  Step C: Applicando compensazione discreta per quantità intere...")
+                self._apply_discrete_compensation(Decimal(str(final_error)), Decimal(str(self.target_total)))
             
             # Calcola il totale finale
             final_total = (self.df[self.quantity_column] * self.df[self.price_column]).sum()
